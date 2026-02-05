@@ -1,0 +1,36 @@
+# Dependencies
+node_modules/
+
+# OS misc
+.DS_Store
+Thumbs.db
+
+# Logs
+logs
+*.log
+npm-debug.log*
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Build directories
+dist/
+build/
+.output/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Database (optional - ignoring local SQLite DBs to force seeding)
+*.db
+*.sqlite
+*.sqlite3
+
+# Editor directories
+.vscode/
+.idea/

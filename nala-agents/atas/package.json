@@ -1,0 +1,24 @@
+{
+    "name": "atas-agent",
+    "version": "1.0.0",
+    "type": "module",
+    "description": "Adaptive Testing & Assessment System (MCP Agent)",
+    "main": "server.js",
+    "scripts": {
+        "start": "node server.js",
+        "dev": "node server.js",
+        "build:ui": "vite build"
+    },
+    "dependencies": {
+        "@modelcontextprotocol/sdk": "^0.6.0",
+        "express": "^4.18.2",
+        "cors": "^2.8.5",
+        "sqlite3": "^5.1.7",
+        "dotenv": "^16.3.1"
+    },
+    "devDependencies": {
+        "vite": "^5.0.0",
+        "@vitejs/plugin-vue": "^5.0.0",
+        "vue": "^3.4.0"
+    }
+}
