@@ -6,7 +6,6 @@ import { resolve } from 'path'
 export default defineConfig({
     plugins: [vue()],
     root: 'src/ui',
-    base: '/atas/',
     build: {
         outDir: '../../dist',
         emptyOutDir: true

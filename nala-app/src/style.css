@@ -1,0 +1,22 @@
+@import "tailwindcss";
+
+@theme {
+  --color-background: #000000;
+  /* Updated to Pure Black per user request */
+  --color-surface: #1e293b;
+  --color-primary: #3b82f6;
+  --color-accent: #8b5cf6;
+  --backdrop-blur-xs: 2px;
+}
+
+body {
+  @apply bg-background text-white antialiased;
+  min-height: 100vh;
+  margin: 0;
+  font-family: 'Inter', system-ui, sans-serif;
+
+  /* Fallback/Overlay gradient if needed, but primary bg is now black */
+  background-image: radial-gradient(at 0% 0%, hsla(253, 16%, 7%, 1) 0, transparent 50%),
+    radial-gradient(at 50% 0%, hsla(225, 39%, 30%, 0.5) 0, transparent 50%),
+    radial-gradient(at 100% 0%, hsla(339, 49%, 30%, 0.5) 0, transparent 50%);
+}

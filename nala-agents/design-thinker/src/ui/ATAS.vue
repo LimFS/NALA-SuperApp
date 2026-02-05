@@ -6,9 +6,6 @@
     <div class="flex-none bg-white border-b border-gray-200 flex flex-col md:flex-row items-center justify-between px-4 py-3 md:px-6 md:py-0 shadow-sm gap-3 md:gap-0 sticky top-0 z-10">
       <div class="flex items-center gap-2 w-full md:w-auto">
         <!-- Dynamic Course Icon -->
-        <a href="http://localhost:8000" class="mr-3 p-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-500 hover:text-gray-900 transition-colors" title="Back to Dashboard">
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-        </a>
         <div class="w-8 h-8 rounded shrink-0 bg-gray-100 overflow-hidden shadow-sm border border-gray-200">
            <img v-if="courseIcon" :src="courseIcon" alt="Course Icon" class="w-full h-full object-cover">
            <div v-else class="w-full h-full bg-gradient-to-br from-purple-600 to-indigo-600 flex items-center justify-center text-white font-bold text-xs">
@@ -22,9 +19,7 @@
             <span class="text-gray-300 font-light hidden sm:inline">|</span>
             <span class="text-gray-600 font-normal text-sm md:text-base truncate hidden sm:inline">{{ courseName }}</span>
           </h1>
-          <span class="text-[10px] text-purple-600 font-bold uppercase tracking-wider truncate">
-             {{ greeting }}, {{ fetchedUserName }}
-          </span>
+          <span class="text-[10px] text-gray-400 font-medium uppercase tracking-wider truncate">{{ semester }} • ATAS</span>
         </div>
       </div>
       
@@ -333,15 +328,7 @@ const props = defineProps({
   questions: { type: Array, default: () => [] }
 });
 
-// --- USER & GREETING ---
-const fetchedUserName = ref(props.studentName);
-const greeting = ref('Welcome');
-const fetchedQuestions = ref([]);
-
-const updateGreeting = () => {
-    const h = new Date().getHours();
-    greeting.value = h < 12 ? 'Good Morning' : (h < 18 ? 'Good Afternoon' : 'Good Evening');
-};
+// --- STATE ---
 const maxQuestions = ref(6); // Questions per set (Dynamic)
 const promptTemplate = ref('');
 const questionCount = ref(0); 
@@ -360,10 +347,9 @@ const getScopedProgressKey = () => `atas_progress_${props.courseCode || 'GLOBAL'
 // --- COMPUTED QUESTION BANK (Bucket by Difficulty) ---
 const questionBank = computed(() => {
     const bank = {};
-    const source = props.questions.length > 0 ? props.questions : fetchedQuestions.value;
-    if (!source || source.length === 0) return {};
+    if (!props.questions || props.questions.length === 0) return {};
 
-    source.forEach(q => {
+    props.questions.forEach(q => {
         // Filter by Set ID (Support snake_case from DB or camelCase if transformed)
         const qSetId = q.set_id !== undefined ? q.set_id : (q.setId !== undefined ? q.setId : 1);
         
@@ -391,8 +377,7 @@ const currentQuestion = computed(() => {
 // --- PROGRESS PERSISTENCE ---
 import { watch } from 'vue';
 
-// Use absolute path routed via Gateway to ensure correct targeting
-const API_BASE = '/atas/api';
+const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api';
 
 // Helper to get userId (Mocked as 'user1' or prop)
 const getUserId = () => 'user1'; // Hardcoded for now, or match props.studentId if consistent
@@ -523,48 +508,11 @@ const fetchConfig = async () => {
 
 // Perform restore on mount (after props are ready)
 onMounted(async () => {
-    updateGreeting();
-    // 1. Fetch Config
     await fetchConfig();
-
-    // 2. Fetch User Code (Identity Propagation)
-    try {
-        // Use Global Gateway API to identify user
-        const res = await fetch('/api/user/me');
-        if (res.ok) {
-            const user = await res.json();
-            fetchedUserName.value = user.first_name || 'Student';
-        }
-    } catch (e) {
-        console.warn("ATA: Failed to fetch user identity", e);
-    }
-
-    // 3. Fetch Questions (Self-contained Mode)
-    if (props.questions.length === 0) {
-        try {
-            const fetchUrl = `${API_BASE}/courses/${props.courseCode}/questions`;
-            console.log(`ATA: Fetching questions from [${fetchUrl}]...`);
-            const qRes = await fetch(fetchUrl);
-            if (qRes.ok) {
-                const data = await qRes.json();
-                console.log("ATA: Questions fetched:", data);
-                if (Array.isArray(data)) {
-                     fetchedQuestions.value = data;
-                } else if (data.questions) {
-                     fetchedQuestions.value = data.questions;
-                }
-            } else {
-                 console.error("ATA: Questions fetch failed", qRes.status);
-            }
-        } catch (e) {
-            console.error("ATA: Failed to fetch questions", e);
-        }
-    }
-
     restoreProgress();
 });
 
-import SecretManager from './SecretManager';
+import SecretManager from '../../services/SecretManager';
 
 const showSettings = ref(false);
 const connectionStatus = ref(null);
