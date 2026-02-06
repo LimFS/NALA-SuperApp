@@ -1,12 +1,28 @@
 import { createApp } from 'vue'
 import ATAS from './ATAS.vue'
 
-const app = createApp(ATAS, {
-    // Props matching what AgentView passed
-    courseCode: 'MH1810',
-    courseName: 'Mathematics 2',
-    semester: 'AY2025 Semester 2',
-    studentName: 'Student User'
-})
+const bootstrap = async () => {
+    let config = {
+        courseCode: 'MH1810',
+        courseName: 'Mathematics 2',
+        academicYear: 'AY2025',
+        semester: 'Semester 2',
+        studentName: 'Student User'
+    };
 
-app.mount('#app')
+    try {
+        const res = await fetch('/atas/api/config');
+        if (res.ok) {
+            const data = await res.json();
+            // Data has structured fields: academicYear, semester
+            config = { ...config, ...data };
+        }
+    } catch (e) {
+        console.warn("Using default config, API failed:", e);
+    }
+
+    const app = createApp(ATAS, config);
+    app.mount('#app');
+};
+
+bootstrap();

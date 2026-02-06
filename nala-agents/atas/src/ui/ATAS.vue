@@ -305,6 +305,7 @@ import { ref, computed, onMounted, onErrorCaptured } from 'vue';
 const props = defineProps({
   courseCode: { type: String, required: true },
   courseName: { type: String, required: true },
+  academicYear: { type: String, default: 'AY2025' }, // NEW Prop
   semester: { type: String, required: true },
   courseIcon: { type: String, default: null },
   studentName: { type: String, default: 'Student' },
@@ -471,6 +472,11 @@ const restoreProgress = async () => {
                 isComplete.value = state.isComplete ?? false;
                 console.log("ATA: Progress Restored from SERVER", state);
                 return; // Server sync successful
+            } else {
+                // SERVER EXPLICITLY SAYS NO PROGRESS -> PURGE LOCAL STATE
+                console.log("ATA: No progress on server, clearing stale local state.");
+                localStorage.removeItem(getScopedProgressKey());
+                return; // Do NOT fallback to local storage
             }
         }
     } catch (e) {
@@ -798,12 +804,19 @@ const nextQuestion = () => {
 };
 
 // Action to proceed from transition screen
+// Action to proceed from transition screen
 const startNextModule = () => {
-    const nextSetId = 2; // Move to Vectors
+    // Dynamic next set (prevent hardcoding 2)
+    const nextSetId = currentSetId.value + 1;
     currentSetId.value = nextSetId;
     showModuleTransition.value = false;
     
-    // Auto-detect starting difficulty for this set
+    // Reset Progress State completely for new set
+    questionCount.value = 0;
+    currentQuestionIndex.value = 0; // CRITICAL FIX: Start from first question of new set
+    userAnswer.value = '';
+    
+    // Auto-detect starting difficulty (though Linear Logic ignores this now, good for label)
     const setQuestions = props.questions.filter(q => {
          const qSetId = q.set_id !== undefined ? q.set_id : (q.setId !== undefined ? q.setId : 1);
          return qSetId === nextSetId;
@@ -815,9 +828,6 @@ const startNextModule = () => {
     } else {
         currentDifficulty.value = 1;
     }
-    
-    questionCount.value = 0;
-    // user answer already cleared
 };
 
 
