@@ -195,35 +195,48 @@
                </div>
            </div>
 
-           <!-- TAB: ANALYTICS -->
-           <div v-else-if="activeTab === 'analytics'" class="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-               <div class="p-6 border-b border-gray-100">
-                   <h3 class="text-lg font-bold text-gray-900">Student Performance</h3>
-                   <p class="text-sm text-gray-500">Aggregate metrics per question.</p>
-               </div>
-               <table class="w-full text-sm text-left">
-                   <thead class="bg-gray-50 text-gray-500 font-bold uppercase text-xs">
-                       <tr>
-                           <th class="px-6 py-3">Question ID</th>
-                           <th class="px-6 py-3 text-right">Attempts</th>
-                           <th class="px-6 py-3 text-right">Avg Tries</th>
-                           <th class="px-6 py-3 text-right">Success Rate</th>
-                       </tr>
-                   </thead>
-                   <tbody class="divide-y divide-gray-100">
-                       <tr v-for="stat in analytics" :key="stat.question_id" class="hover:bg-gray-50">
-                           <td class="px-6 py-4 font-mono font-medium">{{ stat.question_id }}</td>
-                           <td class="px-6 py-4 text-right">{{ stat.total_attempts }}</td>
-                           <td class="px-6 py-4 text-right">{{ Number(stat.avg_tries).toFixed(1) }}</td>
-                           <td class="px-6 py-4 text-right">
-                               <span class="font-bold" :class="stat.success_rate > 0.7 ? 'text-green-600' : (stat.success_rate < 0.4 ? 'text-red-600' : 'text-yellow-600')">
-                                   {{ (stat.success_rate * 100).toFixed(0) }}%
-                               </span>
-                           </td>
-                       </tr>
-                   </tbody>
-               </table>
-           </div>
+            <!-- TAB: ANALYTICS -->
+            <div v-else-if="activeTab === 'analytics'" class="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+                <div class="p-6 border-b border-gray-100">
+                    <h3 class="text-lg font-bold text-gray-900">Student Performance</h3>
+                    <p class="text-sm text-gray-500">Aggregate metrics per question.</p>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm text-left">
+                        <thead class="bg-gray-50 text-gray-500 font-bold uppercase text-xs">
+                            <tr>
+                                <th @click="sortTable('set_name')" class="px-6 py-3 cursor-pointer hover:text-indigo-600 select-none">Set Name <span v-if="sortBy === 'set_name'">{{ sortDesc ? '▼' : '▲' }}</span></th>
+                                <!-- Removed Q. ID Column as requested -->
+                                <th @click="sortTable('question_text')" class="px-6 py-3 cursor-pointer hover:text-indigo-600 select-none">Question <span v-if="sortBy === 'question_text'">{{ sortDesc ? '▼' : '▲' }}</span></th>
+                                <th @click="sortTable('students_attempted')" class="px-6 py-3 text-right cursor-pointer hover:text-indigo-600 select-none">Students <span v-if="sortBy === 'students_attempted'">{{ sortDesc ? '▼' : '▲' }}</span></th>
+                                <th @click="sortTable('total_interactions')" class="px-6 py-3 text-right cursor-pointer hover:text-indigo-600 select-none">Total Tries <span v-if="sortBy === 'total_interactions'">{{ sortDesc ? '▼' : '▲' }}</span></th>
+                                <th @click="sortTable('avg_tries')" class="px-6 py-3 text-right cursor-pointer hover:text-indigo-600 select-none">Avg Tries <span v-if="sortBy === 'avg_tries'">{{ sortDesc ? '▼' : '▲' }}</span></th>
+                                <th @click="sortTable('success_rate')" class="px-6 py-3 text-right cursor-pointer hover:text-indigo-600 select-none">Success <span v-if="sortBy === 'success_rate'">{{ sortDesc ? '▼' : '▲' }}</span></th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-100">
+                            <tr v-for="stat in sortedAnalytics" :key="stat.question_id" class="hover:bg-gray-50">
+                                <td class="px-6 py-4 font-medium text-gray-900">{{ stat.set_name }}</td>
+                                <!-- Removed ID Cell -->
+                                <td class="px-6 py-4">
+                                    <div class="max-w-xs">
+                                        <div class="truncate font-medium text-gray-800" :title="stat.question_text">{{ stat.question_text }}</div>
+                                        <div v-if="stat.context" class="text-xs text-gray-500 truncate italic mt-0.5" :title="stat.context">{{ stat.context }}</div>
+                                    </div>
+                                </td>
+                                <td class="px-6 py-4 text-right">{{ stat.students_attempted }}</td>
+                                <td class="px-6 py-4 text-right">{{ stat.total_interactions }}</td>
+                                <td class="px-6 py-4 text-right">{{ Number(stat.avg_tries).toFixed(1) }}</td>
+                                <td class="px-6 py-4 text-right">
+                                    <span class="font-bold" :class="stat.success_rate > 0.7 ? 'text-green-600' : (stat.success_rate < 0.4 ? 'text-red-600' : 'text-yellow-600')">
+                                        {{ (stat.success_rate * 100).toFixed(0) }}%
+                                    </span>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
 
        </div>
     </div>
@@ -262,20 +275,46 @@
                      <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Explanation</label>
                      <textarea v-model="editingQuestion.explanation" rows="2" class="w-full border rounded p-2 text-sm"></textarea>
                 </div>
-                <!-- Simple JSON Editors for complex fields -->
+                <!-- Media URL + Preview -->
                 <div>
-                     <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Media (JSON)</label>
-                     <textarea v-model="editingJSON.media" rows="2" class="w-full border rounded p-2 text-xs font-mono bg-gray-50"></textarea>
+                     <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Image Media</label>
+                     <div class="flex gap-2 mb-2">
+                        <input v-model="mediaUrl" class="flex-1 border rounded p-2 text-sm" placeholder="https://example.com/image.png">
+                     </div>
+                     <div v-if="mediaUrl" class="w-full h-32 bg-gray-50 rounded border flex items-center justify-center overflow-hidden">
+                        <img :src="mediaUrl" @error="handleImageError" class="max-h-full max-w-full object-contain">
+                     </div>
                 </div>
+
                 <!-- Options (MCQ) -->
                 <div>
-                     <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Options (JSON Array - MCQ Only)</label>
-                     <textarea v-model="editingJSON.options" rows="1" class="w-full border rounded p-2 text-xs font-mono bg-gray-50" placeholder='["Option A", "Option B"]'></textarea>
+                     <label class="block text-xs font-bold text-gray-500 uppercase mb-1 flex items-center justify-between">
+                        <span>Options (MCQ)</span>
+                        <button @click="addOption" class="text-indigo-600 text-[10px] hover:underline">+ Add Option</button>
+                     </label>
+                     <div class="space-y-2">
+                        <div v-for="(opt, idx) in optionList" :key="idx" class="flex items-center gap-2">
+                            <span class="text-xs font-mono font-bold">{{ String.fromCharCode(65 + idx) }}.</span>
+                            <input v-model="optionList[idx]" class="flex-1 border rounded p-2 text-sm">
+                            <button @click="removeOption(idx)" class="text-gray-400 hover:text-red-500 font-bold px-2">✕</button>
+                        </div>
+                        <div v-if="optionList.length === 0" class="text-xs text-gray-400 italic">No options added.</div>
+                     </div>
                 </div>
+
                 <!-- Answer Key -->
                 <div>
-                     <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Answer Key (JSON Array)</label>
-                     <textarea v-model="editingJSON.answerKey" rows="1" class="w-full border rounded p-2 text-xs font-mono bg-gray-50" placeholder='["Correct Answer"]'></textarea>
+                     <label class="block text-xs font-bold text-gray-500 uppercase mb-1 flex items-center justify-between">
+                        <span>Answer Key (Correct Options)</span>
+                        <button @click="addAnswer" class="text-indigo-600 text-[10px] hover:underline">+ Add Answer</button>
+                     </label>
+                     <div class="space-y-2">
+                        <div v-for="(ans, idx) in answerList" :key="idx" class="flex items-center gap-2">
+                             <input v-model="answerList[idx]" class="flex-1 border rounded p-2 text-sm" placeholder="Exact match of option text">
+                             <button @click="removeAnswer(idx)" class="text-gray-400 hover:text-red-500 font-bold px-2">✕</button>
+                        </div>
+                        <div v-if="answerList.length === 0" class="text-xs text-gray-400 italic">No answers defined.</div>
+                     </div>
                 </div>
             </div>
             <div class="p-6 border-t border-gray-100 flex justify-end gap-3">
@@ -294,6 +333,7 @@ import { ref, onMounted, computed, watch } from 'vue';
 const props = defineProps({
   courseCode: String,
   semester: String,
+  academicYear: String,
   userId: String
 });
 
@@ -309,16 +349,43 @@ const activeTab = ref('settings');
 
 const config = ref({ iconUrl: '', promptTemplate: '', apiKey: '' });
 // Context Data for Display
-const courseName = ref('');
-const academicYear = ref('AY2025'); 
+const courseName = ref('Course Name');
+// academicYear removed from data (use prop) 
 
 const sets = ref([]);
 const questions = ref([]);
 const analytics = ref([]);
 const selectedSetId = ref(null);
 
+// Sorting
+const sortBy = ref('set_name');
+const sortDesc = ref(false);
+
+const sortTable = (key) => {
+  if (sortBy.value === key) sortDesc.value = !sortDesc.value;
+  else { sortBy.value = key; sortDesc.value = false; }
+};
+
+const sortedAnalytics = computed(() => {
+  return [...analytics.value].sort((a, b) => {
+    let valA = a[sortBy.value];
+    let valB = b[sortBy.value];
+    if (valA == null) valA = '';
+    if (valB == null) valB = '';
+    
+    if (typeof valA === 'string') {
+       return sortDesc.value ? valB.localeCompare(valA, undefined, { numeric: true }) : valA.localeCompare(valB, undefined, { numeric: true });
+    }
+    return sortDesc.value ? valB - valA : valA - valB;
+  });
+});
+
 const editingQuestion = ref(null);
-const editingJSON = ref({ media: '{}', answerKey: '[]', options: '[]' }); // Helper for JSON fields
+// Form States (User Friendly)
+const mediaUrl = ref('');
+const optionList = ref([]);
+const answerList = ref([]);
+const editingJSON = ref({ media: '{}', answerKey: '[]', options: '[]' }); // Keep for legacy fallback if needed
 
 const handleImageError = (e) => {
     e.target.style.opacity = '0.3';
@@ -344,12 +411,11 @@ const fetchData = async () => {
         };
         // Populate Context
         if (d.courseName) courseName.value = d.courseName;
-        if (d.academicYear) academicYear.value = d.academicYear;
     }
 
     // 2. Sets
     try {
-        const sRes = await fetch(`/atas/api/sets/${props.courseCode}?userId=${props.userId}&academicYear=${academicYear.value}&semester=${props.semester}`);
+        const sRes = await fetch(`/atas/api/sets/${props.courseCode}?userId=${props.userId}&academicYear=${props.academicYear}&semester=${props.semester}`);
         if (sRes.ok) {
             sets.value = await sRes.json();
             sets.value.forEach((s, i) => { if (!s.sequence_order) s.sequence_order = i + 1; });
@@ -361,7 +427,7 @@ const fetchData = async () => {
 
     // 3. Analytics
     try {
-        const aRes = await fetch(`/atas/api/analytics/${props.courseCode}?userId=${props.userId}&academicYear=${academicYear.value}&semester=${props.semester}`);
+        const aRes = await fetch(`/atas/api/analytics/${props.courseCode}?userId=${props.userId}&academicYear=${props.academicYear}&semester=${props.semester}`);
         if (aRes.ok) {
             const d = await aRes.json();
             analytics.value = d.stats;
@@ -377,7 +443,7 @@ const saveConfig = async () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
             userId: props.userId,
-            academicYear: 'AY2025', semester: 'Semester 2', // Hardcoded for prototype context
+            academicYear: props.academicYear, semester: props.semester,
             config: config.value
         })
     });
@@ -390,15 +456,10 @@ const updateSet = async (set) => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
             userId: props.userId,
-            academicYear: 'AY2025', semester: 'Semester 2',
+            academicYear: props.academicYear, semester: props.semester,
             set: set
         })
     });
-};
-
-const toggleSetVisibility = (set) => {
-    set.is_visible = !set.is_visible;
-    updateSet(set);
 };
 
 const moveSet = (set, dir) => {
@@ -413,9 +474,6 @@ const addNewSet = async () => {
     // Generate UUID for Set ID logic? 
     // Wait, Sets table uses `set_id` INTEGER? Or did we migrate?
     // DB Schema says `set_id INTEGER`. 
-    // Strategy: We keep Integer for `set_id` (Sets are small, scoped to course), 
-    // but use UUID for `id`? `question_sets` uses `id INTEGER PRIMARY KEY`.
-    // The previous implementation used `set_id` as external ID.
     // Switching `set_id` to UUID might break Schema if defined as INTEGER.
     // DB Schema: `set_id INTEGER NOT NULL`.
     // OK, for Sets, let's stick to Integer ID (Max + 1) for now as it's scoped and ordered.
@@ -444,7 +502,7 @@ const confirmDeleteSet = async (setRow) => {
     try {
         const query = new URLSearchParams({ 
             userId: props.userId, 
-            academicYear: 'AY2025', semester: 'Semester 2' 
+            academicYear: props.academicYear, semester: props.semester 
         });
         const res = await fetch(`/atas/api/sets/${props.courseCode}/${setRow.set_id}?${query}`, {
             method: 'DELETE'
@@ -466,51 +524,82 @@ const confirmDeleteSet = async (setRow) => {
 // --- QUESTIONS ---
 const fetchQuestions = async () => {
     if (!selectedSetId.value) return;
-    const res = await fetch(`/atas/api/courses/${props.courseCode}/questions?setId=${selectedSetId.value}`);
+    const res = await fetch(`/atas/api/courses/${props.courseCode}/questions?setId=${selectedSetId.value}&academicYear=${props.academicYear}&semester=${props.semester}`);
     if (res.ok) questions.value = await res.json();
 };
+
+// FORM HELPERS
+const addOption = () => optionList.value.push('');
+const removeOption = (idx) => optionList.value.splice(idx, 1);
+const addAnswer = () => answerList.value.push('');
+const removeAnswer = (idx) => answerList.value.splice(idx, 1);
 
 const openQuestionModal = (q = null) => {
     if (q) {
         editingQuestion.value = JSON.parse(JSON.stringify(q)); // Deep copy
-        editingJSON.value.media = JSON.stringify(q.media || {}, null, 2);
-        editingJSON.value.answerKey = JSON.stringify(q.answerKey || q.answer_key || [], null, 2);
-        editingJSON.value.options = JSON.stringify(q.options || [], null, 2);
+        
+        // Parse Media
+        mediaUrl.value = '';
+        if (q.media && q.media.url) mediaUrl.value = q.media.url; 
+        else if (typeof q.media === 'string') {
+             try {
+                const m = JSON.parse(q.media);
+                if (m.url) mediaUrl.value = m.url;
+             } catch(e) { /* ignore */ }
+        }
+
+        // Parse Options
+        optionList.value = [];
+        if (Array.isArray(q.options)) optionList.value = [...q.options];
+        else if (typeof q.options === 'string') {
+            try { optionList.value = JSON.parse(q.options) || []; } catch(e){}
+        }
+
+        // Parse Answer Key
+        answerList.value = [];
+        if (Array.isArray(q.answerKey || q.answer_key)) answerList.value = [...(q.answerKey || q.answer_key)];
+         else if (typeof q.answerKey === 'string') {
+            try { answerList.value = JSON.parse(q.answerKey) || []; } catch(e){}
+        } else if (typeof q.answer_key === 'string') {
+             try { answerList.value = JSON.parse(q.answer_key) || []; } catch(e){}
+        }
+
     } else {
         // New: Use UUID for production readiness
         editingQuestion.value = {
             id: crypto.randomUUID(), 
             question_id: `Q${questions.value.length + 1}`,
             course_code: props.courseCode,
-            academic_year: 'AY2025', semester: 'Semester 2',
+            academic_year: props.academicYear, semester: props.semester,
             set_id: selectedSetId.value,
             question_text: 'New Question',
-            type: 'text',
             type: 'text',
             difficulty: 1,
             context: '',
             media: null
         };
-        editingJSON.value.media = '{}';
-        editingJSON.value.answerKey = '[]';
-        editingJSON.value.options = '[]';
+        mediaUrl.value = '';
+        optionList.value = [];
+        answerList.value = [];
     }
 };
 
 const saveQuestion = async () => {
     try {
-        // Validation / Parse JSON fields
-        try {
-            editingQuestion.value.media = JSON.parse(editingJSON.value.media);
-        } catch(e) { throw new Error("Invalid format in 'Media' field. Must be valid JSON."); }
+        // Validation / Serialize
         
-        try {
-            editingQuestion.value.answerKey = JSON.parse(editingJSON.value.answerKey);
-        } catch(e) { throw new Error("Invalid format in 'Answer Key' field. Must be valid JSON Array."); }
-        
-        try {
-            editingQuestion.value.options = JSON.parse(editingJSON.value.options);
-        } catch(e) { throw new Error("Invalid format in 'Options' field. Must be valid JSON Array."); }
+        // Media
+        if (mediaUrl.value.trim()) {
+            editingQuestion.value.media = { type: 'image', url: mediaUrl.value.trim() };
+        } else {
+            editingQuestion.value.media = null;
+        }
+
+        // Options
+        editingQuestion.value.options = optionList.value.filter(o => o.trim() !== '');
+
+        // Answer Key
+        editingQuestion.value.answerKey = answerList.value.filter(a => a.trim() !== '');
         
         const res = await fetch(`/atas/api/questions`, {
             method: 'POST',
@@ -535,7 +624,7 @@ const saveQuestion = async () => {
 
 const deleteQuestion = async (id) => {
     if(!confirm('Delete this question?')) return;
-    await fetch(`/atas/api/questions/${id}?userId=${props.userId}&courseCode=${props.courseCode}&academicYear=AY2025&semester=Semester%202`, {
+    await fetch(`/atas/api/questions/${id}?userId=${props.userId}&courseCode=${props.courseCode}&academicYear=${props.academicYear}&semester=${props.semester}`, {
         method: 'DELETE'
     });
     fetchQuestions();

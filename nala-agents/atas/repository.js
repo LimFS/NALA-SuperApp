@@ -248,16 +248,28 @@ const getSets = (courseCode, academicYear, semester) => {
 
 const getQuestionStats = (courseCode, academicYear, semester) => {
     return new Promise((resolve, reject) => {
+        // User Request: Pull from Sets -> Questions -> Attempts (Left Join to ensure all questions appear)
         const sql = `
-            SELECT question_id, 
-                   COUNT(*) as total_attempts, 
-                   AVG(is_correct) as success_rate,
-                   AVG(attempt_count) as avg_tries
-            FROM student_question_attempts 
-            WHERE course_code = ?
-            GROUP BY question_id
+            SELECT 
+                   qs.name as set_name,
+                   q.id as question_id, 
+                   q.question_text,
+                   q.context,
+                   COUNT(DISTINCT sqa.user_id) as students_attempted,
+                   COALESCE(SUM(sqa.attempt_count), 0) as total_interactions,
+                   COALESCE(AVG(sqa.is_correct), 0) as success_rate,
+                   COALESCE(AVG(sqa.attempt_count), 0) as avg_tries
+            FROM questions q
+            JOIN question_sets qs ON q.set_id = qs.set_id 
+                 AND q.course_code = qs.course_code 
+                 AND q.academic_year = qs.academic_year 
+                 AND q.semester = qs.semester
+            LEFT JOIN student_question_attempts sqa ON q.id = sqa.question_id
+            WHERE q.course_code = ? AND q.academic_year = ? AND q.semester = ?
+            GROUP BY q.id
+            ORDER BY qs.sequence_order, q.id
         `;
-        db.all(sql, [courseCode], (err, rows) => {
+        db.all(sql, [courseCode, academicYear, semester], (err, rows) => {
             if (err) reject(err);
             else resolve(rows);
         });
@@ -394,7 +406,6 @@ export default {
     upsertSet,
     deleteSet,
     upsertQuestion,
-    deleteQuestion,
     deleteQuestion,
     getQuestionStats,
     saveProgress,

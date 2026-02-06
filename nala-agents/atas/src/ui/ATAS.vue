@@ -6,7 +6,7 @@
     <div class="flex-none bg-white border-b border-gray-200 flex flex-col md:flex-row items-center justify-between px-4 py-3 md:px-6 md:py-0 shadow-sm gap-3 md:gap-0 sticky top-0 z-10">
       <div class="flex items-center gap-2 w-full md:w-auto">
         <!-- Dynamic Course Icon -->
-        <a href="http://localhost:8000" class="mr-3 p-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-500 hover:text-gray-900 transition-colors" title="Back to Dashboard">
+        <a :href="dashboardUrl" class="mr-3 p-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-500 hover:text-gray-900 transition-colors" title="Back to Dashboard">
             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
         </a>
         <div class="w-8 h-8 rounded shrink-0 bg-gray-100 overflow-hidden shadow-sm border border-gray-200">
@@ -102,6 +102,7 @@
         @close="showFacultyDashboard = false"
         :courseCode="courseCode"
         :semester="semester"
+        :academicYear="academicYear"
         :userId="activeUserId"
     />
 
@@ -595,6 +596,8 @@ const courseIcon = ref(''); // Initialize empty
 const userRole = ref('student');
 const isFaculty = computed(() => userRole.value === 'faculty');
 const showFacultyDashboard = ref(false);
+const dashboardUrl = ref('http://localhost:8000'); // Default (Producible URL) using Env var from backend
+
 
 const switchUser = async (userId) => {
     activeUserId.value = userId;
@@ -620,6 +623,7 @@ const loadUserContext = async () => {
                 const data = await configRes.json();
                 if (data.promptTemplate) promptTemplate.value = data.promptTemplate;
                 if (data.iconUrl) courseIcon.value = data.iconUrl; 
+                if (data.dashboardUrl) dashboardUrl.value = data.dashboardUrl; // Dynamic Back Link
             }
             // New: Fetch Sets for Context
             const setsRes = await fetch(`${API_BASE}/sets/${props.courseCode}?userId=${activeUserId.value}&academicYear=${ay}&semester=${sem}`);

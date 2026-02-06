@@ -13,16 +13,26 @@ import { dirname, join } from 'path';
 import dotenv from 'dotenv';
 import repository from './repository.js'; // Import Repository Module
 
+import rateLimit from 'express-rate-limit'; // Security: Rate Limiting
+
 // --- CONFIG ---
 dotenv.config(); // Load .env
 const HTTP_PORT = process.env.PORT || 3001;
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+const SUPERAPP_URL = process.env.SUPERAPP_URL || 'http://localhost:8000'; // production-ready default
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-// --- EXPRESS SERVER ---
+// --- MIDDLEWARE ---
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+// Security: Rate Limit AI Endpoints (limit to 100 requests per 15 minutes)
+const aiLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 100,
+    message: { error: "Too many grading requests, please try again later." }
+});
 
 // Serve Static Assets (Built UI) from 'dist'
 app.use(express.static(join(__dirname, 'dist')));
@@ -51,13 +61,13 @@ app.post('/api/progress/attempt', async (req, res) => {
 });
 
 // Secure Proxy for Gemini Grading
-app.post('/api/grade', async (req, res) => {
+app.post('/api/grade', aiLimiter, async (req, res) => {
     try {
         const { contents } = req.body;
         if (!process.env.GEMINI_API_KEY) {
             return res.status(500).json({ error: "Server misconfiguration: No API Key." });
         }
-        console.log("Server: Proxying grading request to Gemini...");
+        // console.log("Server: Proxying grading request to Gemini..."); // Reduced log noise for production
         const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${process.env.GEMINI_API_KEY}`;
         const apiRes = await fetch(url, {
             method: 'POST',
@@ -117,24 +127,25 @@ app.get('/api/courses/:courseCode/questions', async (req, res) => {
 app.get('/api/config', async (req, res) => {
     try {
         const row = await repository.get("SELECT * FROM course_offerings WHERE is_active = 1 LIMIT 1");
-        if (!row) {
-            // Fallback if DB is empty
-            return res.json({
-                courseCode: 'MH1810',
-                courseName: 'Mathematics 2',
-                academicYear: 'AY2025',
-                semester: 'Semester 2'
-            });
-        }
-        res.json({
+        // Fallback or DB Logic
+        const baseConfig = row ? {
             courseCode: row.course_code,
             courseName: row.course_name,
             academicYear: row.academic_year,
             semester: row.semester,
-            // Exposed for Faculty Mode
             iconUrl: row.icon_url,
             promptTemplate: row.prompt_template,
-            // Sensitive fields like api_key should be filtered unless faculty, but for now we expose config metadata
+        } : {
+            courseCode: 'MH1810',
+            courseName: 'Mathematics 2',
+            academicYear: 'AY2025',
+            semester: 'Semester 2'
+        };
+
+        // NEW: Inject Infrastructure Config (Dashboard URL)
+        res.json({
+            ...baseConfig,
+            dashboardUrl: SUPERAPP_URL
         });
     } catch (err) {
         res.status(500).json({ error: err.message });
