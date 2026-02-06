@@ -29,6 +29,12 @@
       </div>
       
       <div class="flex items-center gap-4 w-full md:w-auto justify-between md:justify-end">
+        <!-- Faculty Mode Button (Only if authorized) -->
+        <button v-if="isFaculty" @click="showFacultyDashboard = true" class="px-3 py-1.5 bg-indigo-600 text-white text-xs font-bold rounded-lg hover:bg-indigo-700 transition-colors shadow-sm flex items-center gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+            Faculty Mode
+        </button>
+
         <!-- Settings Button (API Key) -->
         <button @click="showSettings = true" class="p-2 text-gray-400 hover:text-purple-600 transition-colors" title="Settings">
            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
@@ -56,6 +62,27 @@
            The AI Tutor is active and managed by the secure backend.
         </p>
 
+        <!-- Use Switcher (Dev Mode) -->
+        <div class="mb-6 bg-gray-50 p-3 rounded-lg border border-gray-100">
+            <h4 class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Identify As</h4>
+            <div class="flex gap-2">
+                <button 
+                    @click="switchUser('uuid-del')" 
+                    class="flex-1 py-2 text-sm font-bold rounded-md transition-colors border"
+                    :class="activeUserId === 'uuid-del' ? 'bg-white text-purple-600 border-purple-200 shadow-sm' : 'text-gray-400 border-transparent hover:bg-gray-100'"
+                >
+                    Del (Student)
+                </button>
+                <button 
+                    @click="switchUser('uuid-hal')" 
+                    class="flex-1 py-2 text-sm font-bold rounded-md transition-colors border"
+                    :class="activeUserId === 'uuid-hal' ? 'bg-white text-indigo-600 border-indigo-200 shadow-sm' : 'text-gray-400 border-transparent hover:bg-gray-100'"
+                >
+                    Hal (Faculty)
+                </button>
+            </div>
+        </div>
+
         <div class="mb-6 pt-4 border-t border-gray-100">
            <button @click="resetTestAndClose" class="w-full bg-red-50 text-red-600 hover:bg-red-100 py-3 rounded-lg font-bold flex items-center justify-center gap-2 transition-colors">
              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
@@ -68,6 +95,15 @@
         </div>
       </div>
     </div>
+
+    <!-- Faculty Dashboard Overlay -->
+    <FacultyDashboard 
+        v-if="showFacultyDashboard" 
+        @close="showFacultyDashboard = false"
+        :courseCode="courseCode"
+        :semester="semester"
+        :userId="activeUserId"
+    />
 
     <!-- Main Content Area -->
     <!-- Responsive: p-4 for mobile, p-6 for desktop. -->
@@ -146,8 +182,16 @@
       <!-- Active Test Interface -->
       <div v-else class="w-full max-w-3xl space-y-4 md:space-y-6">
         
-        <!-- 2. Question Card -->
-        <div class="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden relative group">
+        <!-- NEW: Set/Module Context Header -->
+      <div v-if="currentSetName" class="w-full max-w-3xl mb-4 px-2">
+          <span class="inline-flex items-center gap-2 px-3 py-1 bg-indigo-50 border border-indigo-100 rounded-full text-xs font-bold text-indigo-700 tracking-wide uppercase">
+              <span class="w-1.5 h-1.5 rounded-full bg-indigo-500"></span>
+              {{ currentSetName }}
+          </span>
+      </div>
+
+      <!-- Question Card -->
+      <div class="w-full max-w-3xl bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden flex flex-col min-h-[400px] transition-all duration-500 relative">
           <!-- Difficulty Badge -->
           <div class="absolute top-0 right-0 p-3 md:p-4 z-10">
              <span class="inline-flex items-center px-2 py-1 md:px-3 rounded-full text-[10px] md:text-xs font-bold bg-gray-100/90 backdrop-blur-sm text-gray-600 border border-gray-200 shadow-sm">
@@ -156,9 +200,22 @@
              </span>
           </div>
 
+
+
           <div class="p-5 md:p-8 pt-10 md:pt-12">
-            <!-- MEDIA SUPPORT (Images/Video) -->
-            <!-- Prominently displayed at the top aka 'Above Question' as requested -->
+            <!-- Context / Background Info -->
+            <div v-if="currentQuestion.context" class="mb-4 md:mb-6 pl-3 md:pl-4 border-l-4 border-purple-200 py-1">
+              <p class="text-[10px] md:text-xs font-bold text-purple-900 uppercase tracking-wide mb-1 opacity-70">Background Context</p>
+              <p class="text-sm md:text-base text-gray-700 italic leading-relaxed">{{ currentQuestion.context }}</p>
+            </div>
+
+            <!-- Actual Question -->
+            <h3 class="text-xl md:text-2xl font-medium text-gray-900 leading-relaxed font-serif mb-6">
+              <span class="font-bold text-gray-400 mr-2 select-none">{{ currentQuestionIndex + 1 }}.</span>
+              {{ currentQuestion.question_text }}
+            </h3>
+
+            <!-- MEDIA SUPPORT (Images/Video) - Moved Below Question -->
             <div v-if="currentQuestion.media" class="mb-6 rounded-lg overflow-hidden border border-gray-100 bg-gray-50">
               <img 
                 v-if="currentQuestion.media.type === 'image'" 
@@ -177,17 +234,6 @@
                 Your browser does not support the video tag.
               </video>
             </div>
-
-            <!-- Context / Background Info -->
-            <div v-if="currentQuestion.context" class="mb-4 md:mb-6 pl-3 md:pl-4 border-l-4 border-purple-200 py-1">
-              <p class="text-[10px] md:text-xs font-bold text-purple-900 uppercase tracking-wide mb-1 opacity-70">Background Context</p>
-              <p class="text-sm md:text-base text-gray-700 italic leading-relaxed">{{ currentQuestion.context }}</p>
-            </div>
-
-            <!-- Actual Question -->
-            <h3 class="text-xl md:text-2xl font-medium text-gray-900 leading-relaxed font-serif">
-              {{ currentQuestion.question_text }}
-            </h3>
           </div>
         </div>
 
@@ -299,6 +345,7 @@
 
 <script setup>
 import { ref, computed, onMounted, onErrorCaptured } from 'vue';
+import FacultyDashboard from './FacultyDashboard.vue'; // New Import
 // import velocityGraph from './assets/velocity_graph.png'; // Removed in favor of DB static path
 
 // --- PROPS FOR GENERICITY ---
@@ -316,17 +363,19 @@ const props = defineProps({
 const fetchedUserName = ref(props.studentName);
 const greeting = ref('Welcome');
 const fetchedQuestions = ref([]);
+const fetchedSets = ref([]); // Store sets for name resolution
 
 // Use absolute paths served from public/dist via Gateway
-const mh1810Icon = '/atas/mh1810_math.png';
-const riemannIcon = '/atas/mh1810_math.png'; // Using same placeholder for now or fix if riemann exists
+// Hardcoded icons REMOVED. Icons are now fetched via fetchConfig()
+// const mh1810Icon = '/atas/mh1810_math.png';
+// const riemannIcon = '/atas/mh1810_math.png';
 
 // Fallback logic if prop is missing
+// Fallback logic if prop is missing, now solely dependent on fetched config
 const displayIcon = computed(() => {
    if (props.courseIcon) return props.courseIcon;
-   if (props.courseCode === 'MH1810') return mh1810Icon;
-   if (props.courseCode === 'MH2100') return riemannIcon;
-   return null;
+   if (courseIcon.value) return courseIcon.value;
+   return null; // No hardcoded fallback
 });
 
 const updateGreeting = () => {
@@ -353,7 +402,11 @@ const userAnswer = ref('');
 const feedback = ref(null);
 const isComplete = ref(false);
 const currentQuestionIndex = ref(0); 
-const currentSetId = ref(1); // 1 = Calculus, 2 = Vectors
+const currentSetId = ref(1); 
+const currentSetName = computed(() => {
+    const s = fetchedSets.value.find(s => s.set_id === currentSetId.value);
+    return s ? s.name : `Set ${currentSetId.value}`;
+});
 const showModuleTransition = ref(false);
 
 const getScopedKey = () => `atas_api_key_${props.courseCode || 'GLOBAL'}`;
@@ -366,13 +419,15 @@ const questionBank = computed(() => {
     const source = props.questions.length > 0 ? props.questions : fetchedQuestions.value;
     if (!source || source.length === 0) return [];
 
-    // Filter by Set ID
+    // Filter by Set ID (Loose equality to handle string/int mismatch)
     const filtered = source.filter(q => {
-        const qSetId = q.set_id !== undefined ? q.set_id : (q.setId !== undefined ? q.setId : 1);
-        return qSetId === currentSetId.value;
+        const qSetId = q.set_id ?? q.setId ?? 1;
+        return qSetId == currentSetId.value;
     });
 
-    // Sort by Difficulty ASC, then ID ASC (Natural Sort for "Q1", "Q2", "Q10")
+    console.log(`ATA: Question Bank for Set ${currentSetId.value} has ${filtered.length} items.`);
+
+    // Sort by Difficulty ASC, then ID ASC
     return filtered.sort((a, b) => {
         const diffA = a.difficulty || 1;
         const diffB = b.difficulty || 1;
@@ -381,22 +436,24 @@ const questionBank = computed(() => {
     });
 });
 
-// Current Question Logic (Simple Indexing)
+// Current Question Logic
 const currentQuestion = computed(() => {
     const list = questionBank.value;
     if (list.length === 0) return { 
         question_text: "No questions available for this module.",
         type: 'text', options: [], media: null, answerKey: []
     };
-    // Ensure index is within bounds
     const idx = Math.min(Math.max(0, currentQuestionIndex.value), list.length - 1);
     return list[idx];
 });
 
 // Sync UI Difficulty Label with Current Question
 watch(currentQuestion, (newQ) => {
-    if (newQ && newQ.difficulty) {
-        currentDifficulty.value = newQ.difficulty;
+    if (newQ) {
+        // Prefer q.difficulty, fallback to existing currentDifficulty, fallback to 1. Ensure >= 1.
+        let d = newQ.difficulty ?? currentDifficulty.value ?? 1;
+        if (d < 1) d = 1;
+        currentDifficulty.value = d;
     }
 });
 
@@ -406,8 +463,8 @@ import { watch } from 'vue';
 // Use absolute path routed via Gateway to ensure correct targeting
 const API_BASE = '/atas/api';
 
-// Helper to get userId (Mocked as 'user1' or prop)
-const getUserId = () => 'user1'; // Hardcoded for now, or match props.studentId if consistent
+// Helper to get userId
+const getUserId = () => activeUserId.value;
 
 // Helper: Parse Semester Prop (e.g., "AY2025 Semester 2")
 const getAySem = () => {
@@ -465,7 +522,9 @@ const restoreProgress = async () => {
                 const state = json.data;
                 // Hydrate Store
                 questionCount.value = state.questionCount ?? 0;
-                currentDifficulty.value = state.currentDifficulty ?? 1;
+                let d = state.currentDifficulty ?? 1;
+                if (d < 1) d = 1;
+                currentDifficulty.value = d;
                 currentQuestionIndex.value = state.currentQuestionIndex ?? 0;
                 currentSetId.value = state.currentSetId ?? 1;
                 showModuleTransition.value = state.showModuleTransition ?? false;
@@ -489,7 +548,9 @@ const restoreProgress = async () => {
         try {
             const state = JSON.parse(saved);
             questionCount.value = state.questionCount ?? 0;
-            currentDifficulty.value = state.currentDifficulty ?? 1;
+            let d = state.currentDifficulty ?? 1;
+            if (d < 1) d = 1;
+            currentDifficulty.value = d;
             currentQuestionIndex.value = state.currentQuestionIndex ?? 0;
             currentSetId.value = state.currentSetId ?? 1;
             showModuleTransition.value = state.showModuleTransition ?? false;
@@ -508,19 +569,7 @@ watch(
     { deep: true }
 );
 
-// SELF-HEALING: Watch for invalid difficulty state
-watch(() => questionBank.value, (bank) => {
-    // If current difficulty is empty BUT we have other difficulties available
-    // This happens when switching sets where difficulty ranges differ (e.g. Set 2 starts at L3)
-    const currentList = bank[currentDifficulty.value] || [];
-    if (currentList.length === 0) {
-        const availableLevels = Object.keys(bank).map(Number).sort((a,b) => a-b);
-        if (availableLevels.length > 0) {
-            console.log(`ATA: Auto-correcting difficulty from ${currentDifficulty.value} to ${availableLevels[0]}`);
-            currentDifficulty.value = availableLevels[0];
-        }
-    }
-}, { deep: true, immediate: true });
+// SELF-HEALING WATCHER REMOVED (Legacy Bucket Logic incompatible with Linear Array)
 
 const fetchConfig = async () => {
     try {
@@ -539,47 +588,99 @@ const fetchConfig = async () => {
 };
 
 // Perform restore on mount (after props are ready)
-onMounted(async () => {
-    updateGreeting();
-    // 1. Fetch Config
-    await fetchConfig();
+// --- IDENTITY & ROLE MANAGEMENT ---
+const activeUserId = ref('uuid-del'); // Default to Del
+// Use dynamic courseIcon.value fetched from DB
+const courseIcon = ref(''); // Initialize empty
+const userRole = ref('student');
+const isFaculty = computed(() => userRole.value === 'faculty');
+const showFacultyDashboard = ref(false);
 
-    // 2. Fetch User Code (Identity Propagation)
+const switchUser = async (userId) => {
+    activeUserId.value = userId;
+    // Clear local progress cache to avoid mixing users
+    localStorage.removeItem(getScopedProgressKey()); 
+    await loadUserContext();
+};
+
+const loadUserContext = async () => {
     try {
-        // Use Global Gateway API to identify user
-        const res = await fetch('/api/user/me');
+        // 1. Fetch Identity
+        const res = await fetch(`/api/user/me?userId=${activeUserId.value}`);
         if (res.ok) {
             const user = await res.json();
             fetchedUserName.value = user.first_name || 'Student';
         }
-    } catch (e) {
-        console.warn("ATA: Failed to fetch user identity", e);
-    }
 
-    // 3. Fetch Questions (Self-contained Mode)
-    if (props.questions.length === 0) {
+        // New: Fetch Course Config (for promptTemplate and courseIcon)
         try {
-            const fetchUrl = `${API_BASE}/courses/${props.courseCode}/questions`;
-            console.log(`ATA: Fetching questions from [${fetchUrl}]...`);
-            const qRes = await fetch(fetchUrl);
-            if (qRes.ok) {
-                const data = await qRes.json();
-                console.log("ATA: Questions fetched:", data);
-                if (Array.isArray(data)) {
-                     fetchedQuestions.value = data;
-                } else if (data.questions) {
-                     fetchedQuestions.value = data.questions;
+            const { ay, sem } = getAySem();
+            const configRes = await fetch(`${API_BASE}/config?courseCode=${props.courseCode}&academicYear=${ay}&semester=${sem}`);
+            if (configRes.ok) {
+                const data = await configRes.json();
+                if (data.promptTemplate) promptTemplate.value = data.promptTemplate;
+                if (data.iconUrl) courseIcon.value = data.iconUrl; 
+            }
+            // New: Fetch Sets for Context
+            const setsRes = await fetch(`${API_BASE}/sets/${props.courseCode}?userId=${activeUserId.value}&academicYear=${ay}&semester=${sem}`);
+            if (setsRes.ok) {
+                fetchedSets.value = await setsRes.json();
+                
+                // VALIDATION: Ensure currentSetId points to a valid, visible set
+                if (fetchedSets.value.length > 0) {
+                    const exists = fetchedSets.value.find(s => s.set_id === currentSetId.value);
+                    if (!exists) {
+                        console.log(`ATA: Validating Set Context - Set ${currentSetId.value} not found/visible. Switching to ${fetchedSets.value[0].set_id}`);
+                        currentSetId.value = fetchedSets.value[0].set_id;
+                    }
                 }
-            } else {
-                 console.error("ATA: Questions fetch failed", qRes.status);
             }
         } catch (e) {
-            console.error("ATA: Failed to fetch questions", e);
+            console.warn("ATA: Failed to fetch course metadata", e);
         }
-    }
 
-    restoreProgress();
+        // 2. Fetch Role
+        const { ay, sem } = getAySem();
+        const roleRes = await fetch(`${API_BASE}/auth/role?userId=${activeUserId.value}&courseCode=${props.courseCode}&academicYear=${ay}&semester=${sem}`);
+        if (roleRes.ok) {
+            const data = await roleRes.json();
+            userRole.value = data.role;
+            console.log(`ATA: User ${activeUserId.value} is ${userRole.value}`);
+        }
+
+        // 3. Restore Progress (for this user)
+        await restoreProgress();
+
+    } catch (e) {
+        console.warn("ATA: Context load failed", e);
+    }
+};
+
+// Override onMounted
+onMounted(async () => {
+    updateGreeting();
+    await fetchConfig();
+    await loadUserContext();
+
+    // 3. Fetch Questions
+    try {
+        const { ay, sem } = getAySem();
+        // Determine Set ID? No, fetch ALL questions for the course/semester
+        // The endpoint /questions fetches ALL questions (sorted by Set/Difficulty)
+        // Filtering happens in client via computed `questionBank`
+        const query = new URLSearchParams({ academicYear: ay, semester: sem });
+        const res = await fetch(`${API_BASE}/courses/${props.courseCode}/questions?${query}`);
+        if (res.ok) {
+            fetchedQuestions.value = await res.json();
+            console.log("ATA: Questions loaded", fetchedQuestions.value.length);
+        } else {
+            console.warn("ATA: Failed to load questions", res.status);
+        }
+    } catch (e) {
+        console.warn("ATA: Network error fetching questions", e);
+    }
 });
+
 
 const showSettings = ref(false);
 const errorState = ref(null);
@@ -638,23 +739,9 @@ const submitAnswer = async () => {
        // Construct Prompt Dynamic from Database
        let finalPrompt = promptTemplate.value;
        
-       // Fallback if DB fetch failed or Prompt missing
        if (!finalPrompt) {
-            finalPrompt = `You are a Socratic AI Tutor for University Calculus.
-Context:
-- Question: "{{questionText}}"
-- Valid Answers: "{{answerKey}}" (Accept standard abbreviations like 'AUC' for Area Under Curve, typos, and conceptual equivalents).
-- Teacher's Strategy: "{{hintPolicy}}"
-- Full Explanation: "{{explanation}}"
-
-Student Input: "{{studentAnswer}}"
-
-Instructions:
-1. ACCURACY: Check if the Student Input is conceptually correct. heavily penalize gibberish, but allow "auc", "area", "integral", etc. if they match the concept.
-2. FEEDBACK: 
-   - If CORRECT: Return { "correct": true, "feedback": "Brief confirmation + 1 sentence reinforcement." }
-   - If INCORRECT: Return { "correct": false, "feedback": "A Socratic question or hint that guides them closer. DO NOT reveal the answer. Pivot off their specific wrong input if possible." }
-3. Return ONLY valid JSON.`;
+            console.error("ATA Grade Error: System Prompt missing from Database configuration.");
+            throw new Error("Course Configuration Error: Missing System Prompt.");
        }
 
        const promptText = finalPrompt
@@ -824,7 +911,7 @@ const startNextModule = () => {
     
     if (setQuestions.length > 0) {
         const minDiff = Math.min(...setQuestions.map(q => q.difficulty || 1));
-        currentDifficulty.value = minDiff;
+        currentDifficulty.value = minDiff < 1 ? 1 : minDiff;
     } else {
         currentDifficulty.value = 1;
     }

@@ -19,10 +19,9 @@ app.get('/health', (req, res) => {
 // Setup/Seed Database (Dev Utility)
 app.get('/setup', async (req, res) => {
     try {
-        // Create Users Table
         await db.query(`
             CREATE TABLE IF NOT EXISTS users (
-                user_id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+                user_id TEXT PRIMARY KEY,
                 first_name VARCHAR(100) NOT NULL,
                 last_name VARCHAR(100) NOT NULL,
                 email VARCHAR(255) UNIQUE NOT NULL,
@@ -31,34 +30,34 @@ app.get('/setup', async (req, res) => {
             );
         `);
 
-        // Check if Default User Exists
-        const check = await db.query("SELECT * FROM users WHERE email = $1", ['student@nala.ai']);
-        if (check.rows.length === 0) {
-            const hash = await bcrypt.hash('password123', 10);
-            await db.query(
-                "INSERT INTO users (first_name, last_name, email, password_hash) VALUES ($1, $2, $3, $4)",
-                ['Del', 'Spooner', 'student@nala.ai', hash]
-            );
-            return res.json({ message: 'Database setup complete. Created Del Spooner.' });
-        } else {
-            // Force Update Name if exists (for demo purposes)
-            await db.query(
-                "UPDATE users SET first_name = $1, last_name = $2 WHERE email = $3",
-                ['Del', 'Spooner', 'student@nala.ai']
-            );
-            return res.json({ message: 'Database user updated to Del Spooner.' });
+        // Hardcoded Stable IDs for Prototype
+        const users = [
+            { id: 'uuid-del', first: 'Del', last: 'Spooner', email: 'student@nala.ai', role: 'student' },
+            { id: 'uuid-hal', first: 'Hal', last: '9000', email: 'faculty@nala.ai', role: 'faculty' }
+        ];
+
+        const hash = await bcrypt.hash('password123', 10);
+
+        for (const u of users) {
+            await db.query(`
+                INSERT INTO users (user_id, first_name, last_name, email, password_hash)
+                VALUES ($1, $2, $3, $4, $5)
+                ON CONFLICT (user_id) DO UPDATE SET first_name = $2, last_name = $3
+             `, [u.id, u.first, u.last, u.email, hash]);
         }
+        res.json({ message: 'Database seeded with Del (Student) and Hal (Faculty).' });
     } catch (err) {
         console.error(err);
         res.status(500).json({ error: err.message });
     }
 });
 
-// Get Current User (Mock Auth: returns the first user found or hardcoded)
+// Get Current User (Mock Auth: returns requested user or default)
 app.get('/user/me', async (req, res) => {
+    const requestedId = req.query.userId || 'uuid-del'; // Default to Del
     try {
         // Try DB First
-        const result = await db.query("SELECT user_id, first_name, last_name, email FROM users WHERE email = $1", ['student@nala.ai']);
+        const result = await db.query("SELECT user_id, first_name, last_name, email FROM users WHERE user_id = $1", [requestedId]);
         if (result.rows.length > 0) {
             return res.json(result.rows[0]);
         }
@@ -66,9 +65,12 @@ app.get('/user/me', async (req, res) => {
         console.warn("DB Connection failed, falling back to Mock User for Demo:", err.message);
     }
 
-    // Fail-safe Fallback (if DB down or empty)
+    // Fail-safe Fallback (Mock)
+    if (requestedId === 'uuid-hal') {
+        return res.json({ user_id: 'uuid-hal', first_name: 'Hal', last_name: '9000', email: 'faculty@nala.ai' });
+    }
     res.json({
-        user_id: 'mock-uuid-1234',
+        user_id: 'uuid-del',
         first_name: 'Del',
         last_name: 'Spooner',
         email: 'student@nala.ai'

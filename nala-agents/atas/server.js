@@ -116,7 +116,7 @@ app.get('/api/courses/:courseCode/questions', async (req, res) => {
 // 3. Application Config (Dynamic Context)
 app.get('/api/config', async (req, res) => {
     try {
-        const row = await repository.get("SELECT course_code, course_name, academic_year, semester FROM course_offerings WHERE is_active = 1 LIMIT 1");
+        const row = await repository.get("SELECT * FROM course_offerings WHERE is_active = 1 LIMIT 1");
         if (!row) {
             // Fallback if DB is empty
             return res.json({
@@ -130,8 +130,184 @@ app.get('/api/config', async (req, res) => {
             courseCode: row.course_code,
             courseName: row.course_name,
             academicYear: row.academic_year,
-            semester: row.semester
+            semester: row.semester,
+            // Exposed for Faculty Mode
+            iconUrl: row.icon_url,
+            promptTemplate: row.prompt_template,
+            // Sensitive fields like api_key should be filtered unless faculty, but for now we expose config metadata
         });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// --- FACULTY API ---
+
+// Check Role
+app.get('/api/auth/role', async (req, res) => {
+    const { userId, courseCode, academicYear, semester } = req.query;
+    try {
+        const row = await repository.getUserRole(userId, courseCode, academicYear, semester);
+        res.json({ role: row ? row.role : 'student' }); // Default to student
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Update Config (Faculty Only)
+app.post('/api/courses/:courseCode/config', async (req, res) => {
+    const { courseCode } = req.params;
+    const { userId, academicYear, semester, config } = req.body;
+
+    // Auth Check
+    const roleRow = await repository.getUserRole(userId, courseCode, academicYear, semester);
+    if (!roleRow || roleRow.role !== 'faculty') {
+        return res.status(403).json({ error: "Unauthorized: Faculty access required." });
+    }
+
+    try {
+        await repository.updateCourseConfig(courseCode, academicYear, semester, config);
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Analytics (Faculty Only)
+app.get('/api/analytics/:courseCode', async (req, res) => {
+    const { courseCode } = req.params;
+    const { userId, academicYear, semester } = req.query;
+
+    const roleRow = await repository.getUserRole(userId, courseCode, academicYear, semester);
+    if (!roleRow || roleRow.role !== 'faculty') {
+        return res.status(403).json({ error: "Unauthorized" });
+    }
+
+    try {
+        const stats = await repository.getQuestionStats(courseCode, academicYear, semester);
+        res.json({ stats });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// --- SETS API (Faculty Only) ---
+app.get('/api/sets/:courseCode', async (req, res) => {
+    const { courseCode } = req.params;
+    const { userId, academicYear, semester } = req.query;
+
+    if (!userId) {
+        // Allow public/student read? For now, students need sets to filter? 
+        // Student logic: gets Sets via client-side logic or `getQuestions`.
+        // Let's assume this endpoint is for fetching METADATA (sequence, visibility) mainly for management.
+        // Actually Student logic might need this to know what sets exist if we dynamic sequence.
+        // But for now strict Faculty Check for Management. 
+        // Wait, repository.getSets is used by getSets. 
+        // Let's allow read for all if authenticated? Or just Faculty for editing view.
+        // Faculty Dashboard calls this.
+    }
+
+    // For editing, we enforce faculty.
+    try {
+        const sets = await repository.getSets(courseCode, academicYear, semester);
+        res.json(sets);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/sets/:courseCode', async (req, res) => {
+    const { courseCode } = req.params;
+    const { userId, academicYear, semester, set } = req.body;
+
+    const roleRow = await repository.getUserRole(userId, courseCode, academicYear, semester);
+    if (!roleRow || roleRow.role !== 'faculty') return res.status(403).json({ error: "Unauthorized" });
+
+    try {
+        await repository.upsertSet(courseCode, academicYear, semester, set);
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.delete('/api/sets/:courseCode/:setId', async (req, res) => {
+    const { courseCode, setId } = req.params;
+    const { userId, academicYear, semester } = req.body; // DELETE body? Or query? Usually DELETE has no body?
+    // Use Query for DELETE auth params
+    const qUserId = req.query.userId;
+    const qAy = req.query.academicYear;
+    const qSem = req.query.semester;
+
+    const roleRow = await repository.getUserRole(qUserId, courseCode, qAy, qSem);
+    if (!roleRow || roleRow.role !== 'faculty') return res.status(403).json({ error: "Unauthorized" });
+
+    try {
+        await repository.deleteSet(courseCode, qAy, qSem, setId);
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// --- STUDENT PROGRESS API ---
+app.post('/api/progress', async (req, res) => {
+    const { userId, courseCode, academicYear, semester, currentSetId, currentDifficulty, lastActiveQuestionUuid, data } = req.body;
+    try {
+        await repository.saveProgress(userId, courseCode, academicYear, semester, {
+            currentSetId, currentDifficulty, lastActiveQuestionId: lastActiveQuestionUuid, data: JSON.stringify(data)
+        });
+        res.json({ success: true });
+    } catch (err) {
+        console.error("Progress Save Error:", err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.get('/api/progress/:courseCode/:userId', async (req, res) => {
+    const { courseCode, userId } = req.params;
+    const { academicYear, semester } = req.query;
+    try {
+        const row = await repository.getProgress(userId, courseCode, academicYear, semester);
+        if (row) {
+            res.json({ found: true, data: JSON.parse(row.data) });
+        } else {
+            res.json({ found: false });
+        }
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// --- QUESTIONS API (Faculty Only) ---
+app.post('/api/questions', async (req, res) => {
+    const { userId, question } = req.body;
+    // Context (Handle camel/snake case mismatch)
+    const courseCode = question.courseCode || question.course_code;
+    const academicYear = question.academicYear || question.academic_year;
+    const semester = question.semester;
+
+    const roleRow = await repository.getUserRole(userId, courseCode, academicYear, semester);
+    if (!roleRow || roleRow.role !== 'faculty') return res.status(403).json({ error: "Unauthorized" });
+
+    try {
+        await repository.upsertQuestion(question);
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.delete('/api/questions/:id', async (req, res) => {
+    const { id } = req.params;
+    const { userId, courseCode, academicYear, semester } = req.query;
+
+    const roleRow = await repository.getUserRole(userId, courseCode, academicYear, semester);
+    if (!roleRow || roleRow.role !== 'faculty') return res.status(403).json({ error: "Unauthorized" });
+
+    try {
+        await repository.deleteQuestion(id);
+        res.json({ success: true });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
