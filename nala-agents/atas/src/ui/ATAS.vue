@@ -10,7 +10,7 @@
             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
         </a>
         <div class="w-8 h-8 rounded shrink-0 bg-gray-100 overflow-hidden shadow-sm border border-gray-200">
-           <img v-if="courseIcon" :src="courseIcon" alt="Course Icon" class="w-full h-full object-cover">
+           <img v-if="displayIcon" :src="displayIcon" alt="Course Icon" class="w-full h-full object-cover">
            <div v-else class="w-full h-full bg-gradient-to-br from-purple-600 to-indigo-600 flex items-center justify-center text-white font-bold text-xs">
              {{ courseCode?.substring(0, 2) || 'AT' }}
            </div>
@@ -52,41 +52,19 @@
       <div class="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
         <h3 class="text-lg font-bold mb-4">Settings</h3>
         
-        <div class="mb-4">
-           <label class="block text-sm font-bold text-gray-700 mb-1">Gemini API Key</label>
-           <p class="text-xs text-gray-500 mb-2">Required for AI Grading.</p>
-           <input v-model="apiKey" type="password" class="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-purple-500 text-sm" placeholder="Paste API Key here...">
-        </div>
-
-        <div class="mb-6">
-           <!-- Active Model Display (Read-Only) -->
-           <div v-if="currentModelName" class="flex items-center gap-2 text-sm bg-purple-50 text-purple-700 p-3 rounded-lg border border-purple-100">
-              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
-              <span class="font-bold">Active Model:</span> {{ currentModelName }}
-           </div>
-           <div v-else class="text-sm text-gray-400 italic p-2">
-              Model not configured. Enter key to auto-detect.
-           </div>
-        </div>
-        
-        <!-- Connection Status (Errors) -->
-        <div v-if="connectionStatus && !connectionStatus.success" class="mb-4 p-3 rounded-lg text-sm bg-red-50 text-red-700 border border-red-200 flex items-center gap-2">
-            <span>❌ {{ connectionStatus.message }}</span>
-        </div>
+        <p class="text-sm text-gray-600 mb-6">
+           The AI Tutor is active and managed by the secure backend.
+        </p>
 
         <div class="mb-6 pt-4 border-t border-gray-100">
-           <button @click="resetTestAndClose" class="text-xs text-red-500 hover:text-red-700 font-medium flex items-center gap-1">
-             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+           <button @click="resetTestAndClose" class="w-full bg-red-50 text-red-600 hover:bg-red-100 py-3 rounded-lg font-bold flex items-center justify-center gap-2 transition-colors">
+             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
              Reset Progress (Demo Mode)
            </button>
         </div>
 
-        <div class="flex justify-end gap-2">
-           <button @click="showSettings = false" class="text-gray-500 px-4 py-2 hover:bg-gray-100 rounded-lg font-medium">Cancel</button>
-           <button @click="handleConnectAndSave" :disabled="isDetecting || !apiKey" class="bg-purple-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-purple-700 disabled:opacity-50 flex items-center gap-2">
-              <span v-if="isDetecting" class="animate-spin">⏳</span>
-              {{ isDetecting ? 'Configuring...' : 'Connect & Save' }}
-           </button>
+        <div class="flex justify-end">
+           <button @click="showSettings = false" class="text-gray-500 px-4 py-2 hover:bg-gray-100 rounded-lg font-medium">Close</button>
         </div>
       </div>
     </div>
@@ -321,7 +299,7 @@
 
 <script setup>
 import { ref, computed, onMounted, onErrorCaptured } from 'vue';
-import velocityGraph from './assets/velocity_graph.png';
+// import velocityGraph from './assets/velocity_graph.png'; // Removed in favor of DB static path
 
 // --- PROPS FOR GENERICITY ---
 const props = defineProps({
@@ -338,11 +316,35 @@ const fetchedUserName = ref(props.studentName);
 const greeting = ref('Welcome');
 const fetchedQuestions = ref([]);
 
+// Use absolute paths served from public/dist via Gateway
+const mh1810Icon = '/atas/mh1810_math.png';
+const riemannIcon = '/atas/mh1810_math.png'; // Using same placeholder for now or fix if riemann exists
+
+// Fallback logic if prop is missing
+const displayIcon = computed(() => {
+   if (props.courseIcon) return props.courseIcon;
+   if (props.courseCode === 'MH1810') return mh1810Icon;
+   if (props.courseCode === 'MH2100') return riemannIcon;
+   return null;
+});
+
 const updateGreeting = () => {
     const h = new Date().getHours();
     greeting.value = h < 12 ? 'Good Morning' : (h < 18 ? 'Good Afternoon' : 'Good Evening');
 };
-const maxQuestions = ref(6); // Questions per set (Dynamic)
+
+
+// Calculate Max Questions based on TOTAL questions available for the current Set
+const maxQuestions = computed(() => {
+    const source = props.questions.length > 0 ? props.questions : fetchedQuestions.value;
+    if (!source) return 0;
+    
+    // Count questions belonging to the current set
+    return source.filter(q => {
+         const qSetId = q.set_id !== undefined ? q.set_id : (q.setId !== undefined ? q.setId : 1);
+         return qSetId === currentSetId.value;
+    }).length;
+});
 const promptTemplate = ref('');
 const questionCount = ref(0); 
 const currentDifficulty = ref(1); // Bloom's Level 1-6
@@ -358,34 +360,43 @@ const getScopedModelKey = () => `atas_model_pref_${props.courseCode || 'GLOBAL'}
 const getScopedProgressKey = () => `atas_progress_${props.courseCode || 'GLOBAL'}`;
 
 // --- COMPUTED QUESTION BANK (Bucket by Difficulty) ---
+// --- COMPUTED QUESTION BANK (Flat Sorted List) ---
 const questionBank = computed(() => {
-    const bank = {};
     const source = props.questions.length > 0 ? props.questions : fetchedQuestions.value;
-    if (!source || source.length === 0) return {};
+    if (!source || source.length === 0) return [];
 
-    source.forEach(q => {
-        // Filter by Set ID (Support snake_case from DB or camelCase if transformed)
+    // Filter by Set ID
+    const filtered = source.filter(q => {
         const qSetId = q.set_id !== undefined ? q.set_id : (q.setId !== undefined ? q.setId : 1);
-        
-        // Only include questions for the current set
-        if (qSetId !== currentSetId.value) return;
-
-        const diff = q.difficulty || 1;
-        if (!bank[diff]) bank[diff] = [];
-        bank[diff].push(q);
+        return qSetId === currentSetId.value;
     });
-    return bank;
+
+    // Sort by Difficulty ASC, then ID ASC (Natural Sort for "Q1", "Q2", "Q10")
+    return filtered.sort((a, b) => {
+        const diffA = a.difficulty || 1;
+        const diffB = b.difficulty || 1;
+        if (diffA !== diffB) return diffA - diffB;
+        return (a.id || '').localeCompare(b.id || '', undefined, { numeric: true });
+    });
 });
 
-// Current Question Logic (Replaces MOCK_DB lookup)
+// Current Question Logic (Simple Indexing)
 const currentQuestion = computed(() => {
-    const list = questionBank.value[currentDifficulty.value] || [];
-    // Wrap around or stop
+    const list = questionBank.value;
     if (list.length === 0) return { 
-        question_text: "No questions available for this level.",
+        question_text: "No questions available for this module.",
         type: 'text', options: [], media: null, answerKey: []
     };
-    return list[currentQuestionIndex.value % list.length];
+    // Ensure index is within bounds
+    const idx = Math.min(Math.max(0, currentQuestionIndex.value), list.length - 1);
+    return list[idx];
+});
+
+// Sync UI Difficulty Label with Current Question
+watch(currentQuestion, (newQ) => {
+    if (newQ && newQ.difficulty) {
+        currentDifficulty.value = newQ.difficulty;
+    }
 });
 
 // --- PROGRESS PERSISTENCE ---
@@ -564,95 +575,10 @@ onMounted(async () => {
     restoreProgress();
 });
 
-import SecretManager from './SecretManager';
-
 const showSettings = ref(false);
-const connectionStatus = ref(null);
 const errorState = ref(null);
 
-// Secret Manager Initialization
-const apiKey = ref('');
-// Sync immediately using SecretManager
-SecretManager.getSecret(props.courseCode).then(k => {
-    if (k) apiKey.value = k;
-});
-
-const DEFAULT_MODEL = 'gemini-1.5-flash';
-const savedModel = localStorage.getItem(getScopedModelKey()) || sessionStorage.getItem(getScopedModelKey()) || DEFAULT_MODEL;
-
-const constructEndpoint = (model) => `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
-
-// Removed legacy migration logic as we are switching storage mechanisms entirely
-const apiEndpoint = ref(constructEndpoint(savedModel));
-
-const resetEndpoint = () => {
-  apiEndpoint.value = constructEndpoint(DEFAULT_MODEL);
-};
-
-// ... (Derived state currentModelName same as before) ...
-const currentModelName = computed(() => {
-   if (!apiEndpoint.value) return null;
-   try {
-     const match = apiEndpoint.value.match(/models\/(.*?):/);
-     return match ? match[1] : 'Custom Endpoint';
-   } catch { return 'Custom'; }
-});
-
-// Auto-Detect Logic (Modified to return success/fail)
-const isDetecting = ref(false);
-const handleConnectAndSave = async () => {
-  if (!apiKey.value) return;
-  isDetecting.value = true;
-  connectionStatus.value = null;
-
-  try {
-     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey.value}`);
-     
-     if (!response.ok) {
-         let msg = response.statusText;
-         try { const err = await response.json(); msg = err.error?.message || msg; } catch {}
-         throw new Error(`Connection Failed: ${msg}`);
-     }
-
-     const data = await response.json();
-     
-     if (data.models) {
-        // Prioritize: 1.5-Flash (Fast/High Quota) -> 1.5-Pro -> Pro -> Flash
-        const preferred = [
-           'gemini-1.5-flash',
-           'gemini-1.5-pro', 
-           'gemini-pro',
-           'gemini-1.0-pro'
-        ];
-        
-        let selectedModel = null;
-        for (const pref of preferred) {
-           selectedModel = data.models.find(m => m.name.includes(pref) && m.supportedGenerationMethods?.includes('generateContent'));
-           if (selectedModel) break;
-        }
-        
-        if (!selectedModel) {
-           selectedModel = data.models.find(m => m.supportedGenerationMethods?.includes('generateContent'));
-        }
-
-        if (selectedModel) {
-            const modelName = selectedModel.name.startsWith('models/') ? selectedModel.name.split('/')[1] : selectedModel.name;
-            apiEndpoint.value = constructEndpoint(modelName);
-            
-            // Save to Secret Manager
-            SecretManager.storeSecret(props.courseCode, apiKey.value);
-            localStorage.setItem(getScopedModelKey(), modelName);
-            
-            showSettings.value = false;
-        } else {
-            throw new Error("No compatible text models found for this key.");
-        }
-      }
-  } catch (e) {
-     connectionStatus.value = { success: false, message: e.message };
-  }
-  isDetecting.value = false;
-};
+// MOCK_DB Removed - using props.questions via questionBank computed property
 
 // MOCK_DB Removed - using props.questions via questionBank computed property  // Bloom Level 4: Analyze (MCQ Variant)
 // MOCK_DB Removed - using props.questions via questionBank computed property
@@ -708,14 +634,21 @@ const submitAnswer = async () => {
        
        // Fallback if DB fetch failed or Prompt missing
        if (!finalPrompt) {
-            finalPrompt = `You are an intelligent AI Tutor.
-Question: "{{questionText}}"
-Correct Answer Key: "{{answerKey}}"
-Student Answer: "{{studentAnswer}}"
-Teacher's Reference:
-- Hint: "{{hintPolicy}}"
-- Explanation: "{{explanation}}"
-Task: Analyze correctness. Return JSON {correct: boolean, feedback: string}.`;
+            finalPrompt = `You are a Socratic AI Tutor for University Calculus.
+Context:
+- Question: "{{questionText}}"
+- Valid Answers: "{{answerKey}}" (Accept standard abbreviations like 'AUC' for Area Under Curve, typos, and conceptual equivalents).
+- Teacher's Strategy: "{{hintPolicy}}"
+- Full Explanation: "{{explanation}}"
+
+Student Input: "{{studentAnswer}}"
+
+Instructions:
+1. ACCURACY: Check if the Student Input is conceptually correct. heavily penalize gibberish, but allow "auc", "area", "integral", etc. if they match the concept.
+2. FEEDBACK: 
+   - If CORRECT: Return { "correct": true, "feedback": "Brief confirmation + 1 sentence reinforcement." }
+   - If INCORRECT: Return { "correct": false, "feedback": "A Socratic question or hint that guides them closer. DO NOT reveal the answer. Pivot off their specific wrong input if possible." }
+3. Return ONLY valid JSON.`;
        }
 
        const promptText = finalPrompt
@@ -774,9 +707,7 @@ Task: Analyze correctness. Return JSON {correct: boolean, feedback: string}.`;
      } catch (e) {
        console.error("AI Grading failed, falling back to standard logic", e);
        usedAI = false; 
-       // DEBUG: Expose error to user to diagnose why it fell back
-       // This will appear in the red box
-       feedbackText = `(System Fallback: ${e.message}) `; 
+       feedbackText = ""; // Clear so standard logic takes over 
      }
   }
 
@@ -844,16 +775,15 @@ Task: Analyze correctness. Return JSON {correct: boolean, feedback: string}.`;
 
 const nextQuestion = () => {
   if (feedback.value?.isCorrect) {
-    // Apply pending progression
-    if (feedback.value.pendingDifficultyUpdate) {
-        currentDifficulty.value = Math.min(6, currentDifficulty.value + 1);
-    }
+    // Standard Linear Progression: Just move to next question
+    // Question Bank is already sorted by Difficulty -> ID
     
-    questionCount.value++; // Increment progress only now
-    currentQuestionIndex.value++; // Rotate pool index only now
+    questionCount.value++; 
+    currentQuestionIndex.value++; 
     
     // Check for Set Completion
-    if (questionCount.value >= maxQuestions.value) {
+    // Use dynamic bank length for accuracy
+    if (questionCount.value >= questionBank.value.length) {
       if (currentSetId.value === 1) {
          // Show Transition Screen instead of alert
          showModuleTransition.value = true;

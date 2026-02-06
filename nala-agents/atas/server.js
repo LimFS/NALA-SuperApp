@@ -138,6 +138,9 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// Serve Static Assets (Built UI) from 'dist'
+app.use(express.static(join(__dirname, 'dist')));
+
 // API Endpoints
 
 // 1. Record Attempt (UPSERT)
@@ -162,6 +165,41 @@ app.post('/api/progress/attempt', (req, res) => {
         }
         res.json({ success: true, attempts: this.changes }); // Note: changes might not reflect total count, just row update
     });
+});
+
+// Secure Proxy for Gemini Grading
+app.post('/api/grade', async (req, res) => {
+    try {
+        const { contents } = req.body;
+
+        // Debug Logging
+        if (!process.env.GEMINI_API_KEY) {
+            console.error("Server: GEMINI_API_KEY is missing from env!");
+            return res.status(500).json({ error: "Server misconfiguration: No API Key." });
+        }
+        console.log("Server: Proxying grading request to Gemini...");
+
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${process.env.GEMINI_API_KEY}`;
+
+        const apiRes = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ contents })
+        });
+
+        if (!apiRes.ok) {
+            const errData = await apiRes.json();
+            console.error("Server: Gemini API Error", apiRes.status, errData);
+            return res.status(apiRes.status).json(errData);
+        }
+
+        const data = await apiRes.json();
+        console.log("Server: Grading success.");
+        res.json(data);
+    } catch (err) {
+        console.error("Proxy Error:", err);
+        res.status(500).json({ error: err.message });
+    }
 });
 
 app.get('/api/progress/:courseCode/:userId', (req, res) => {
