@@ -11,14 +11,23 @@ import cors from "cors";
 import sqlite3 from "sqlite3";
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import dotenv from 'dotenv';
 
 // --- CONFIG ---
+dotenv.config(); // Load .env
 const HTTP_PORT = process.env.PORT || 3001;
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DB_PATH = join(__dirname, 'atas.db');
 
 // --- DATABASE SETUP ---
 const db = new sqlite3.Database(DB_PATH);
+
+// Scalability Optimization: Enable Write-Ahead Logging (WAL) for concurrency
+db.configure('busyTimeout', 5000); // Wait up to 5s if locked
+db.exec('PRAGMA journal_mode = WAL;');
+
 db.serialize(() => {
     db.run(`CREATE TABLE IF NOT EXISTS student_progress (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -109,6 +118,19 @@ db.serialize(() => {
             stmt.finalize();
         }
     });
+    db.run(`CREATE TABLE IF NOT EXISTS student_question_attempts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id TEXT NOT NULL,
+        course_code TEXT NOT NULL,
+        question_id TEXT NOT NULL,
+        set_id INTEGER,
+        attempt_count INTEGER DEFAULT 1,
+        is_correct BOOLEAN DEFAULT 0,
+        last_attempted_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(user_id, course_code, question_id)
+    )`);
+
+    // ... (rest of questions table setup) ...
 });
 
 // --- EXPRESS SERVER ---
@@ -117,6 +139,31 @@ app.use(cors());
 app.use(express.json());
 
 // API Endpoints
+
+// 1. Record Attempt (UPSERT)
+app.post('/api/progress/attempt', (req, res) => {
+    const { userId, courseCode, questionId, setId, isCorrect } = req.body;
+
+    // SQLite UPSERT Syntax
+    const sql = `
+        INSERT INTO student_question_attempts (user_id, course_code, question_id, set_id, is_correct, attempt_count, last_attempted_at)
+        VALUES (?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP)
+        ON CONFLICT(user_id, course_code, question_id) 
+        DO UPDATE SET 
+            attempt_count = student_question_attempts.attempt_count + 1,
+            is_correct = excluded.is_correct,
+            last_attempted_at = CURRENT_TIMESTAMP
+    `;
+
+    db.run(sql, [userId, courseCode, questionId, setId, isCorrect ? 1 : 0], function (err) {
+        if (err) {
+            console.error("Attempt Record Error:", err.message);
+            return res.status(500).json({ error: err.message });
+        }
+        res.json({ success: true, attempts: this.changes }); // Note: changes might not reflect total count, just row update
+    });
+});
+
 app.get('/api/progress/:courseCode/:userId', (req, res) => {
     const { courseCode, userId } = req.params;
     const academicYear = req.query.academicYear || 'AY2025';

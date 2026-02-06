@@ -7,6 +7,10 @@ const pool = new Pool({
     database: process.env.DB_NAME || 'nala_db',
     password: process.env.DB_PASSWORD || 'postgres',
     port: process.env.DB_PORT || 5432,
+    // Scalability Optimization
+    max: parseInt(process.env.DB_POOL_MAX) || 20, // Increase max clients (default 10)
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 2000,
 });
 
 module.exports = {

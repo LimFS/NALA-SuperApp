@@ -699,7 +699,8 @@ const submitAnswer = async () => {
 
   // 1. Attempt AI Grading (Only for Text Questions with Key)
   // Check if type is explicitly 'text' OR undefined (default). Only skip 'mcq'.
-  if (apiKey.value && currentQuestion.value.type !== 'mcq') { 
+  // Note: We no longer check client-side apiKey.value as it's handled by backend.
+  if (currentQuestion.value.type !== 'mcq') { 
      try {
        // Construct Prompt Safely
        // Construct Prompt Dynamic from Database
@@ -724,11 +725,10 @@ Task: Analyze correctness. Return JSON {correct: boolean, feedback: string}.`;
             .replace('{{hintPolicy}}', currentQuestion.value.hint || 'Guide them toward the core concept.')
             .replace('{{explanation}}', currentQuestion.value.explanation || 'Explain why the answer is correct.');
 
-       // Append key parameter to the endpoint
-       const url = new URL(apiEndpoint.value);
-       url.searchParams.append('key', apiKey.value);
+       // Call Backend Proxy (No Client-Side Key)
+       const url = `${API_BASE}/grade`; 
 
-       let response = await fetch(url.toString(), {
+       let response = await fetch(url, {
          method: 'POST',
          headers: { 'Content-Type': 'application/json' },
          body: JSON.stringify({
@@ -736,25 +736,9 @@ Task: Analyze correctness. Return JSON {correct: boolean, feedback: string}.`;
          })
        });
        
-       // SRE: Auto-Recovery for 404 (Model Not Found)
-       // This handles cases where the default/stored model is invalid for the current API key/proxy
-       if (response.status === 404) {
-          console.warn("ATAS: Model not found (404). Attempting auto-discovery recovery...");
-          await handleConnectAndSave(); // This will update apiEndpoint
-          
-          // Retry with new endpoint
-          const newUrl = new URL(apiEndpoint.value);
-          newUrl.searchParams.append('key', apiKey.value);
-          
-          response = await fetch(newUrl.toString(), {
-             method: 'POST',
-             headers: { 'Content-Type': 'application/json' },
-             body: JSON.stringify({
-               contents: [{ parts: [{ text: promptText }] }]
-             })
-          });
-       }
-
+       // SRE: Retry logic (omitted for proxy as backend handles connection)
+       
+       
        if (!response.ok) {
           const errData = await response.json();
           const errMsg = errData.error?.message || response.statusText;
@@ -821,12 +805,29 @@ Task: Analyze correctness. Return JSON {correct: boolean, feedback: string}.`;
                 feedbackText = "🤖 AI Tutor: Point A is definitely a correct turning point! But look closely—is there another point on the graph that behaves just like A?";
              } else {
                 feedbackText = "🤖 AI Tutor: Recall that Acceleration a(t) is the derivative v'(t). You are looking for points where the tangent line is horizontal.";
-             }
           }
       }
   }
+  }
 
-  // 3. Set UI State
+  // 3. Record Attempt (Analytics)
+  try {
+      if (currentQuestion.value.id) {
+          fetch(`${API_BASE}/progress/attempt`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                  userId: getUserId(),
+                  courseCode: props.courseCode,
+                  questionId: currentQuestion.value.id, 
+                  setId: currentSetId.value,
+                  isCorrect: isCorrect
+              })
+          }).catch(e => console.warn("Attempt record failed", e));
+      }
+  } catch (e) { console.warn("Attempt error", e); }
+
+  // 4. Set UI State (Renumbered)
   feedback.value = {
      isCorrect: isCorrect, 
      explanation: feedbackText,
