@@ -4,8 +4,10 @@ import katex from 'katex';
 import 'katex/dist/katex.min.css';
 
 // --- STATE ---
-const courseCode = 'EE2101';
-const userId = ref('del_spooner'); // Resolved Identity
+// Dynamic Configuration via URL Params (e.g., ?course=EE2101&user=student_123)
+const urlParams = new URLSearchParams(window.location.search);
+const courseCode = urlParams.get('course') || 'EE2101';
+const userId = ref(urlParams.get('user') || 'del_spooner'); // Default Identity
 const activeTab = ref('sketch'); // sketch | latex | upload
 const stage = ref('input'); // input | review | feedback
 const gradingResult = ref(null);

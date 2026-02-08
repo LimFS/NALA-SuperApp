@@ -31,7 +31,13 @@ const HTTP_PORT = process.env.PORT || 3005;
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // --- DATABASE SETUP ---
-repository.initDB();
+// Only initialize (and potentially reset) DB if explicitly requested or if typically running in dev/demo mode without persistence
+// In production, migrations should be handled separately.
+if (process.env.INIT_DB === 'true' || process.env.NODE_ENV !== 'production') {
+    repository.initDB();
+} else {
+    console.log("[Server] Skipping DB Init (Assume Schema Exists).");
+}
 
 // --- EXPRESS SERVER ---
 const app = express();
