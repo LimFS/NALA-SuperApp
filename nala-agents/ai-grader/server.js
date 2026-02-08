@@ -8,121 +8,186 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import express from "express";
 import cors from "cors";
-import sqlite3 from "sqlite3";
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import crypto from 'crypto'; // For UUID
+// DYNAMIC REPOSITORY SELECTION (Anti-Gravity Polyglot Persistence)
+import repoSQLite from './repository.js';
+import repoPG from './repository_pg.js';
+
+const repository = process.env.DATABASE_URL && !process.env.DATABASE_URL.includes("localhost:5432/ai_grader")
+    ? repoPG
+    : (process.env.DATABASE_URL ? repoPG : repoSQLite);
+
+if (!process.env.DATABASE_URL) console.log("[Server] Using SQLite (No DATABASE_URL provided).");
+else console.log("[Server] Using Postgres Repository.");
+import { generateUDI } from './udi.js';
+import { sanitizeInput } from './guardrails.js'; // Defensive Design
+import { analyzeImage, describeImage, gradeAnswer } from './vision.js';
+import generator from './src/modules/QuestionGenerator.js';
 
 // --- CONFIG ---
 const HTTP_PORT = process.env.PORT || 3005;
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const DB_PATH = join(__dirname, 'ee2101.db');
 
 // --- DATABASE SETUP ---
-const db = new sqlite3.Database(DB_PATH);
-db.serialize(() => {
-    db.run(`CREATE TABLE IF NOT EXISTS student_progress (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id TEXT,
-        course_code TEXT,
-        academic_year TEXT,
-        semester TEXT,
-        current_set_id INTEGER,
-        current_difficulty INTEGER,
-        last_active_question_id INTEGER,
-        data TEXT,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        UNIQUE(user_id, course_code, academic_year, semester)
-    )`);
-
-    db.run(`CREATE TABLE IF NOT EXISTS questions (
-        id TEXT PRIMARY KEY,
-        question_id TEXT,
-        course_code TEXT,
-        academic_year TEXT,
-        semester TEXT,
-        set_id INTEGER,
-        question_set_name TEXT,
-        question_text TEXT,
-        type TEXT DEFAULT 'text',
-        options TEXT,
-        answer_key TEXT,
-        hint TEXT,
-        explanation TEXT,
-        media TEXT,
-        difficulty INTEGER,
-        context TEXT
-    )`);
-
-    // SEED QUESTIONS (EE2101)
-    db.get("SELECT count(*) as count FROM questions WHERE course_code = 'EE2101'", (err, row) => {
-        if (row && row.count === 0) {
-            console.log("Seeding EE2101 Circuit Analysis Questions...");
-            const qEE = [
-                // Set 1: Basic Circuits
-                ['EE2101', 1, "What does Kirchhoff's Current Law (KCL) state?", 'text', null, JSON.stringify(["sum", "entering", "leaving", "zero"]), "Conservation of charge at a node.", "The sum of currents entering a node equals the sum of currents leaving it.", null, 1, "KCL"],
-                ['EE2101', 1, "Calculate the equivalent resistance of two 10-ohm resistors in parallel.", 'text', null, JSON.stringify(["5", "5 ohm"]), "R_eq = (R1*R2)/(R1+R2).", "5 Ohms.", null, 1, "Resistor Circuits"],
-                ['EE2101', 1, "True or False: Voltage across parallel components is the same.", 'mcq', JSON.stringify(["True", "False"]), JSON.stringify(["True"]), "Think about how they are connected.", "True.", null, 1, "Circuit Properties"],
-
-                // Set 2: AC Analysis
-                ['EE2101', 2, "What is the impedance of a capacitor?", 'text', null, JSON.stringify(["1/jwC", "-j/wC"]), "Depends on frequency w and capacitance C.", "Z_c = 1 / (j * omega * C).", null, 2, "Impedance"],
-                ['EE2101', 2, "In an RLC series circuit, what happens at resonance?", 'mcq', JSON.stringify(["Z is minimum", "Z is maximum", "Current is zero"]), JSON.stringify(["Z is minimum"]), "Impedance is purely resistive.", "Impedance is minimum (purely resistive) and current is maximum.", null, 2, "Resonance"],
-                ['EE2101', 2, "Define 'Power Factor'.", 'text', null, JSON.stringify(["real", "apparent", "cosine"]), "Ratio of two powers.", "Ratio of Real Power to Apparent Power (cos phi).", null, 3, "Power Analysis"]
-            ];
-            const stmt = db.prepare("INSERT INTO questions (id, question_id, course_code, academic_year, semester, set_id, question_set_name, question_text, type, options, answer_key, hint, explanation, media, difficulty, context) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-            qEE.forEach((q, i) => {
-                const uuid = `EE2101_AY2025_S2_S${q[1]}_Q${i + 1}`;
-                stmt.run(
-                    uuid,
-                    String(i + 1),
-                    q[0],
-                    'AY2025',
-                    'Semester 2',
-                    q[1],
-                    q[1] === 1 ? 'Basic Circuits' : 'AC Analysis',
-                    q[2], // text
-                    q[3], // type
-                    q[4], // options
-                    q[5], // answer_key
-                    q[6], // hint
-                    q[7], // explanation
-                    q[8], // media
-                    q[9], // difficulty
-                    q[10] // context
-                );
-            });
-            stmt.finalize();
-        }
-    });
-});
+repository.initDB();
 
 // --- EXPRESS SERVER ---
 const app = express();
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '10mb' })); // Increased for Base64
+// --- API ROUTER ---
+const apiRouter = express.Router();
 
-// API Endpoints
-app.get('/api/progress/:courseCode/:userId', (req, res) => {
+apiRouter.post('/describe-image', async (req, res) => {
+    try {
+        const { image, mimeType } = req.body;
+        if (!image) return res.status(400).json({ error: "No image provided" });
+
+        const description = await describeImage(image, mimeType || 'image/png');
+        res.json({ description });
+    } catch (e) {
+        console.error("Describe Error:", e);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+
+// ... (Existing Setup) ...
+
+apiRouter.post('/grade', async (req, res) => {
+    try {
+        const { userId, courseCode, academicYear, semester, inputBundle } = req.body;
+        const questionId = req.body.questionId || inputBundle.questionId;
+        const setId = req.body.setId || inputBundle.setId;
+
+        if (!userId || !courseCode || !inputBundle) {
+            return res.status(400).json({ error: 'Missing required fields: userId, courseCode, inputBundle' });
+        }
+
+        // 1. Generate UDI (Privacy)
+        const udi = generateUDI(userId, courseCode, academicYear || '2025');
+
+        let score = 0;
+        let maxScore = 10;
+        let feedback = "Grading complete.";
+        let trace = { steps: ["Received Input"] };
+        let isCorrect = false;
+
+        // 2. Vision Analysis (If file present)
+        if (inputBundle.file && inputBundle.file.content) {
+            trace.steps.push(`Detected File: ${inputBundle.file.name}`);
+            try {
+                const visionData = await analyzeImage(inputBundle.file.content, inputBundle.file.type);
+                trace.vision_analysis = visionData;
+                trace.steps.push(`Vision Analysis Complete: Detected ${visionData.objects.length} objects.`);
+
+                // Diagram validation logic (simplified)
+                if (visionData.objects.some(obj => obj.toLowerCase().includes("circuit") || obj.toLowerCase().includes("resistor"))) {
+                    score += 5;
+                    trace.steps.push("Circuit diagram validated (+5 pts).");
+                }
+            } catch (vErr) {
+                console.warn("Vision Analysis Failed:", vErr);
+                trace.steps.push("Vision Analysis Failed.");
+            }
+        }
+
+        // 3. Grading Logic (Gemini 1.5 Flash)
+        if (inputBundle.studentAnswer) { // Text/LaTeX Answer
+            const questionText = inputBundle.questionText || "Unknown Question";
+            // Enhanced Context Extraction
+            const context = inputBundle.context || "";
+            const rubric = inputBundle.rubrics || inputBundle.rubric || { keywords: [] };
+            const hint = inputBundle.hint || "";
+            const correctAnswer = inputBundle.answerKey ? (Array.isArray(inputBundle.answerKey) ? inputBundle.answerKey[0] : inputBundle.answerKey) : "";
+
+            trace.steps.push("Invoking AI Grader (Gemini 3 Pro Preview)...");
+            const gradeResult = await gradeAnswer(
+                questionText,
+                inputBundle.studentAnswer,
+                rubric,
+                context,
+                hint,
+                correctAnswer
+            );
+
+            score = gradeResult.score;
+            feedback = gradeResult.feedback;
+            isCorrect = gradeResult.score >= 5; // Semantic correctness threshold
+            trace.ai_grade = gradeResult;
+            trace.steps.push(`AI Grader Score: ${score}/10`);
+        } else if (!inputBundle.file) {
+            score = 0;
+            feedback = "No answer provided.";
+        }
+
+        score = Math.min(score, maxScore);
+
+        // 4. Save Record (Trace)
+        const recordId = crypto.randomUUID();
+        await repository.saveGradingRecord({
+            id: recordId, udi, user_id: userId,
+            course_code: courseCode, academic_year: academicYear || '2025', semester: semester || '2',
+            question_id: questionId, set_id: setId ? Number(setId) : null,
+            input_bundle: inputBundle, score, max_score: maxScore, grading_trace: trace
+        });
+
+        // 5. Save Progress (Analytics) - NEW
+        if (repository.saveAttempt && questionId) {
+            await repository.saveAttempt({
+                user_id: userId,
+                course_code: courseCode,
+                question_id: questionId,
+                set_id: setId ? Number(setId) : null,
+                is_correct: score >= 8 // Strict threshold for "Mastery" in analytics, or use isCorrect from AI?
+            });
+        }
+
+        // 6. Response
+        res.json({
+            success: true,
+            grade: {
+                score,
+                maxScore,
+                feedback,
+                traceId: recordId
+            }
+        });
+
+    } catch (err) {
+        console.error("Grading Error:", err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Legacy Progress Endpoint
+apiRouter.get('/progress/:courseCode/:userId', async (req, res) => {
     const { courseCode, userId } = req.params;
     const academicYear = req.query.academicYear || 'AY2025';
     const semester = req.query.semester || 'Semester 2';
-    db.get("SELECT * FROM student_progress WHERE user_id = ? AND course_code = ? AND academic_year = ? AND semester = ?",
-        [userId, courseCode, academicYear, semester], (err, row) => {
-            if (err) return res.status(500).json({ error: err.message });
-            if (!row) return res.json({ found: false });
-            res.json({ found: true, id: row.id, currentSetId: row.current_set_id, currentDifficulty: row.current_difficulty, data: JSON.parse(row.data) });
-        });
+    try {
+        const row = await repository.getProgress(userId, courseCode, academicYear, semester);
+        if (!row) return res.json({ found: false });
+        res.json({ found: true, id: row.id, currentSetId: row.current_set_id, currentDifficulty: row.current_difficulty, data: JSON.parse(row.data) });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
 });
 
 // Config Endpoint
-app.get('/api/config/:courseCode', (req, res) => {
+apiRouter.get('/config/:courseCode', (req, res) => {
     res.json({ found: true, maxQuestions: 6, activeModel: 'gemini-1.5-flash', promptText: "You are an AI Grader." });
 });
 
 // Questions Endpoint
-app.get('/api/courses/:courseCode/questions', (req, res) => {
+apiRouter.get('/courses/:courseCode/questions', async (req, res) => {
     const { courseCode } = req.params;
-    db.all("SELECT * FROM questions WHERE course_code = ?", [courseCode], (err, rows) => {
-        if (err) return res.status(500).json({ error: err.message });
+    const academicYear = req.query.academicYear || '2025';
+    const semester = req.query.semester || '2';
+    try {
+        const rows = await repository.getQuestions(courseCode, academicYear, semester);
 
         // Transform for Frontend (Parse JSON fields)
         const questions = rows.map(q => ({
@@ -132,11 +197,45 @@ app.get('/api/courses/:courseCode/questions', (req, res) => {
             media: q.media ? JSON.parse(q.media) : null
         }));
         res.json(questions);
-    });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
 });
 
-// Serve UI
+// --- ADMIN ENDPOINTS ---
+
+apiRouter.post('/admin/seed-questions', async (req, res) => {
+    try {
+        const { courseCode, count, academicYear, semester } = req.body;
+        const qty = count || 5;
+        const ay = academicYear || '2025';
+        const sem = semester || '2';
+
+        console.log(`[Admin] Generating ${qty} questions for ${courseCode} (${ay}/${sem})...`);
+
+        // Use Bloom's Taxonomy Generator
+        const newQuestions = generator.generateQuestions(courseCode, ay, sem, qty);
+
+        // In a real implementation we would save to DB here.
+        // For now, we return them so frontend can see what "would" be seeded, 
+        // OR we just log them. The user asked to "emulate seeding".
+        console.log(`[Admin] Generated ${newQuestions.length} questions.`);
+
+        res.json({ message: `Generated ${newQuestions.length} questions`, data: newQuestions });
+
+    } catch (e) {
+        console.error("Seed Error:", e);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// Mount Router at multiple paths for Gateway/Direct compatibility
+// Mount Router at multiple paths for Gateway/Direct compatibility
+app.use('/api', apiRouter);
+app.use('/ee2101/api', apiRouter); // Alias for production/gateway routing
+app.use('/ee2101/api', apiRouter);
 app.use(express.static(join(__dirname, 'dist')));
+app.use('/ee2101', express.static(join(__dirname, 'dist')));
 
 app.listen(HTTP_PORT, () => {
     console.error(`[AIGrader] HTTP Server running on port ${HTTP_PORT}`);
