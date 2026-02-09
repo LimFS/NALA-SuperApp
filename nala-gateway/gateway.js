@@ -71,9 +71,7 @@ app.use('/ned166', createProxyMiddleware({
 app.use('/ee2101', createProxyMiddleware({
     target: 'http://127.0.0.1:3005',
     changeOrigin: true,
-    pathRewrite: {
-        '^/ee2101': '',
-    }
+    logLevel: 'debug'
 }));
 
 // 7. Analytics Agent

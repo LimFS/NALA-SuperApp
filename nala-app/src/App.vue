@@ -116,13 +116,25 @@ const navigateTo = (url) => {
       </div>
 
       <!-- Greeting & User -->
-      <div class="text-center animate-in fade-in slide-in-from-bottom-4 duration-700">
-         <h1 class="text-3xl sm:text-4xl md:text-5xl font-light text-white mb-2 tracking-tight">
-           {{ greeting }}, <span class="font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-400">{{ userName }}</span>
-         </h1>
-         <p class="text-white/40 text-sm sm:text-base font-light tracking-wide">
-           Select an agent to begin your session.
-         </p>
+      <div class="text-center animate-in fade-in slide-in-from-bottom-4 duration-700 flex flex-col items-center gap-4">
+         <!-- Profile Picture -->
+         <div class="relative group">
+            <div class="absolute -inset-0.5 bg-gradient-to-r from-green-400 to-yellow-500 rounded-full opacity-75 group-hover:opacity-100 transition duration-1000 group-hover:duration-200 animate-tilt blur"></div>
+            <img 
+              src="/assets/profiles/del_durian.png" 
+              alt="Profile" 
+              class="relative w-24 h-24 sm:w-28 sm:h-28 rounded-full border-4 border-black object-cover shadow-2xl bg-white"
+            />
+         </div>
+
+         <div>
+             <h1 class="text-3xl sm:text-4xl md:text-5xl font-light text-white mb-2 tracking-tight">
+               {{ greeting }}, <span class="font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-400">{{ userName }}</span>
+             </h1>
+             <p class="text-white/40 text-sm sm:text-base font-light tracking-wide">
+               Select an agent to begin your session.
+             </p>
+         </div>
       </div>
 
     </div>

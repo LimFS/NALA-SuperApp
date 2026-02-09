@@ -8,6 +8,8 @@ import 'katex/dist/katex.min.css';
 const urlParams = new URLSearchParams(window.location.search);
 const courseCode = urlParams.get('course') || 'EE2101';
 const userId = ref(urlParams.get('user') || 'del_spooner'); // Default Identity
+const userName = ref(userId.value); // Will be updated by API
+const userIcon = ref(null);
 const activeTab = ref('sketch'); // sketch | latex | upload
 const stage = ref('input'); // input | review | feedback
 const gradingResult = ref(null);
@@ -42,8 +44,24 @@ onMounted(async () => {
     checkMobile();
     window.addEventListener('resize', checkMobile);
 
-    // 2. Fetch Questions (Gateway Absolute Path)
+    // 2. Fetch Questions & User Details (Gateway Absolute Path)
     try {
+        // Fetch User Details explicitly from Global NALA API (via Gateway)
+        const userRes = await fetch(`/api/user/me?userId=${userId.value}`);
+        if (userRes.ok) {
+            const userData = await userRes.json();
+            userName.value = userData.first_name || userId.value;
+            // Optimistic update if profile_icon exists
+            if (userData.profile_icon) {
+               // Assuming NALA App is on port 5173 (Gateway proxy logic needed or direct Access)
+               // Since AI Grader is on 3005, and images are in Nala App (5173). 
+               // FIX: We should serve this asset via Gateway or duplicate it. 
+               // For now, let's assume Gateway proxies /assets/ to NALA App or we duplicate.
+               // Simpler: Duplicate the asset to AI Grader public folder for safety.
+               userIcon.value = userData.profile_icon;
+            }
+        }
+
         // Force absolute path to avoid relative path resolution issues with Vite 'base'
         const res = await fetch(`/ee2101/api/courses/${courseCode}/questions`);
         if (res.ok) {
@@ -137,6 +155,9 @@ const handleFileUpload = (e) => {
 const goToReview = async () => { 
     // Optimization: Text inputs do not require a review step (User Request)
     if (activeTab.value === 'latex') {
+        // Fix: Clear phantom images if submitting LaTeX
+        sketchData.value = null;
+        fileData.value = null;
         stage.value = 'review';
     } else {
         // For Sketch/Upload, we must generate a description first
@@ -280,7 +301,9 @@ const getDifficulty = (level) => {
             <button class="home-btn" @click="goHome" title="Back to NALA">
                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
             </button>
-            <div class="logo-box">AG</div>
+            <div class="logo-box-clean">
+                <img :src="'/ee2101/ee2101_icon.png'" alt="EE2101" />
+            </div>
             <div class="titles">
                 <h1>Anti-Gravity / {{ courseCode }}</h1>
                 <span class="sub" v-if="!isMobile">Universal AI-Grader</span>
@@ -293,7 +316,9 @@ const getDifficulty = (level) => {
             </div>
         </div>
         <div class="user-badge" v-if="!isMobile">
-            <span class="status-dot"></span> {{ userId }}
+            <img v-if="userIcon" :src="userIcon" class="header-profile-icon" />
+            <span class="status-dot" v-else></span> 
+            {{ userName }}
         </div>
         <!-- Mobile Menu Icon could go here -->
     </header>
@@ -336,6 +361,9 @@ const getDifficulty = (level) => {
                         <img :src="currentQuestion.media" alt="Question Media" />
                     </div>
                 </div>
+                <div class="card-footer-right">
+                    <span class="max-score">({{ currentQuestion.max_score || 10 }} Marks)</span>
+                </div>
                 <!-- Mobile Action -->
                 <div v-if="isMobile" class="mobile-action">
                     <button class="btn-primary full-width" @click="mobileTab = 'input'">Write Answer ></button>
@@ -349,9 +377,18 @@ const getDifficulty = (level) => {
             <!-- STAGE: INPUT -->
             <div v-if="stage === 'input'" class="stage-container">
                 <div class="tabs">
-                    <button :class="{ active: activeTab === 'sketch' }" @click="activeTab = 'sketch'; setTimeout(initCanvas, 100)">🖌 Sketch</button>
-                    <button :class="{ active: activeTab === 'latex' }" @click="activeTab = 'latex'">∑ LaTeX</button>
-                    <button :class="{ active: activeTab === 'upload' }" @click="activeTab = 'upload'">📁 Upload</button>
+                    <button :class="{ active: activeTab === 'sketch' }" @click="activeTab = 'sketch'; setTimeout(initCanvas, 100)">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.375 2.625a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4Z"/></svg>
+                        Sketch
+                    </button>
+                    <button :class="{ active: activeTab === 'latex' }" @click="activeTab = 'latex'">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 18h16"/><path d="M4 6h3l5 7-5 7h4"/><path d="M14.5 9h5.5"/></svg>
+                        LaTeX
+                    </button>
+                    <button :class="{ active: activeTab === 'upload' }" @click="activeTab = 'upload'">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
+                        Upload
+                    </button>
                 </div>
 
                 <div class="input-content">
@@ -371,11 +408,17 @@ const getDifficulty = (level) => {
                     <textarea v-show="activeTab === 'latex'" v-model="latexInput" class="code-editor" placeholder="\sum F = ma"></textarea>
 
                     <!-- Upload -->
-                    <div v-show="activeTab === 'upload'" class="upload-zone">
-                        <input type="file" @change="handleFileUpload" />
-                        <div v-if="fileData" class="file-preview">
-                            📄 {{ fileData.name }}
+                    <div v-show="activeTab === 'upload'" class="upload-zone" @click="$refs.fileInput.click()">
+                        <input type="file" ref="fileInput" @change="handleFileUpload" accept="image/*,application/pdf" style="display: none" />
+                        <div v-if="!fileData" class="upload-placeholder">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#475569" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
+                            <span>Click or Drag to Upload Image</span>
                         </div>
+                        <div v-if="fileData" class="file-preview-container">
+                            <img v-if="fileData.type.startsWith('image/')" :src="fileData.content" class="upload-preview-img" />
+                            <div class="file-info">📄 {{ fileData.name }}</div>
+                        </div>
+                        <div v-else class="placeholder-text">Click or Drag to Upload Image</div>
                     </div>
                 </div>
 
@@ -413,7 +456,10 @@ const getDifficulty = (level) => {
                         <label class="section-label">📸 Reference Image:</label>
                         <div class="mini-gallery">
                             <img v-if="sketchData" :src="sketchData" class="thumbnail" />
-                            <div v-if="fileData" class="file-chip">📄 {{ fileData.name }}</div>
+                            <div v-if="fileData" class="file-display">
+                                <img v-if="fileData.type.startsWith('image/')" :src="fileData.content" class="thumbnail" />
+                                <span class="file-name">📄 {{ fileData.name }}</span>
+                            </div>
                         </div>
                     </div>
 
@@ -514,7 +560,9 @@ const getDifficulty = (level) => {
     transition: all 0.2s;
 }
 .home-btn:hover { background: #475569; color: white; }
-
+.logo-box-clean { width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; border-radius: 6px; overflow: hidden; background: #fff; }
+.logo-box-clean img { width: 100%; height: 100%; object-fit: cover; }
+.header-profile-icon { width: 24px; height: 24px; border-radius: 50%; margin-right: 8px; border: 1px solid #fff; background: #fff; }
 .logo-box { background: #3b82f6; color: white; font-weight: 800; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; border-radius: 6px; }
 .titles h1 { font-size: 1rem; margin: 0; font-weight: 600; }
 .sub { font-size: 0.75rem; color: #94a3b8; }
@@ -590,20 +638,25 @@ const getDifficulty = (level) => {
 .question-text { font-size: 1.25rem; font-weight: 600; line-height: 1.4; color: #fff; }
 .mobile-action { padding: 16px; border-top: 1px solid #334155; }
 .media-box img { max-width: 100%; border-radius: 8px; margin-top: 12px; }
+.card-footer-right { padding: 12px 24px; text-align: right; border-top: 1px solid #334155; background: #162032; }
+.max-score { font-size: 0.85rem; color: #94a3b8; font-weight: 600; font-family: 'JetBrains Mono', monospace; }
 
 /* INPUT STAGE */
 .stage-container { display: flex; flex-direction: column; height: 100%; gap: 16px; min-height: 400px; }
 .tabs { display: flex; gap: 8px; border-bottom: 2px solid #334155; padding-bottom: 8px; overflow-x: auto; }
-.tabs button { background: none; border: none; color: #94a3b8; padding: 8px 16px; cursor: pointer; font-weight: 600; white-space: nowrap; }
+.tabs button { background: none; border: none; color: #94a3b8; padding: 10px 16px; cursor: pointer; font-weight: 600; white-space: nowrap; display: flex; align-items: center; gap: 8px; transition: all 0.2s; }
 .tabs button.active { color: #3b82f6; background: rgba(59, 130, 246, 0.1); border-radius: 6px; }
+.tabs button:hover { color: #cbd5e1; }
 
 .input-content { flex: 1; position: relative; background: #1e293b; border-radius: 12px; border: 1px solid #334155; overflow: hidden; }
 .canvas-wrapper { width: 100%; height: 100%; position: relative; touch-action: none; /* Critical for touch drawing */ }
 canvas { width: 100%; height: 100%; cursor: crosshair; touch-action: none; }
-.clear-btn { position: absolute; top: 12px; right: 12px; width: 32px; height: 32px; border-radius: 6px; background: #334155; border: none; color: white; z-index: 10; cursor: pointer; }
+.clear-btn { position: absolute; top: 12px; right: 12px; width: 32px; height: 32px; border-radius: 6px; background: #334155; border: none; color: white; z-index: 10; cursor: pointer; display: flex; align-items: center; justify-content: center; }
 
 .code-editor { width: 100%; height: 100%; background: #0f172a; color: #38bdf8; padding: 16px; border: none; resize: none; font-family: 'JetBrains Mono', monospace; font-size: 1rem; outline: none; }
-.upload-zone { height: 100%; display: flex; align-items: center; justify-content: center; flex-direction: column; border: 2px dashed #334155; margin: 12px; border-radius: 8px; color: #94a3b8; }
+.upload-zone { height: 100%; display: flex; align-items: center; justify-content: center; flex-direction: column; border: 2px dashed #334155; margin: 12px; border-radius: 8px; color: #94a3b8; cursor: pointer; transition: border-color 0.2s; }
+.upload-zone:hover { border-color: #3b82f6; background: rgba(59, 130, 246, 0.02); }
+.upload-placeholder { display: flex; flex-direction: column; align-items: center; gap: 12px; }
 
 .action-footer { margin-top: auto; padding-top: 16px; }
 .full-width { width: 100%; }
@@ -678,4 +731,10 @@ canvas { width: 100%; height: 100%; cursor: crosshair; touch-action: none; }
 
 .loading-box { padding: 48px; text-align: center; color: #94a3b8; font-style: italic; }
 
+.file-preview-container { display: flex; flex-direction: column; align-items: center; gap: 8px; margin-top: 12px; }
+.upload-preview-img { max-height: 200px; max-width: 100%; border-radius: 8px; border: 1px solid #475569; }
+.file-info { color: #cbd5e1; font-size: 0.9rem; }
+.placeholder-text { color: #64748b; margin-top: 8px; font-size: 0.9rem; }
+.file-display { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.file-name { font-size: 0.8rem; color: #94a3b8; }
 </style>
