@@ -525,8 +525,16 @@ const moveQuestion = async (index, direction) => {
     try {
         await fetch(`/${props.courseCode.toLowerCase()}/api/questions/reorder`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ items: updates })
+            headers: { 
+                'Content-Type': 'application/json',
+                'X-User-Id': props.userId 
+            },
+            body: JSON.stringify({ 
+                items: updates,
+                courseCode: props.courseCode,
+                academicYear: props.academicYear,
+                semester: props.semester
+            })
         });
     } catch (e) {
         alert("Failed to save order");

@@ -115,7 +115,9 @@ app.get('/health', (req, res) => {
 
 // --- AUTH & HANDOVER (For EE2101 / Token Flow) ---
 // Must match Core Server's secret
-const SHARED_SECRET = crypto.scryptSync('nala-agent-shared-secret-2025', 'salt', 32);
+const SHARED_SECRET = process.env.NALA_SHARED_SECRET
+    ? crypto.scryptSync(process.env.NALA_SHARED_SECRET, 'salt', 32)
+    : crypto.scryptSync('nala-agent-shared-secret-2025', 'salt', 32);
 const IV_LENGTH = 16;
 
 const decryptToken = (text) => {
@@ -693,11 +695,21 @@ app.delete('/api/questions/:id', async (req, res) => {
 });
 
 app.post('/api/questions/reorder', async (req, res) => {
-    const { items } = req.body;
-    // Basic Auth Check Omitted for brevity (or check first item's context if needed, but for now rely on dashboard context being secure enough for prototype/demo)
-    // Ideally, we should validate course context for every item, but items list doesn't carry course info explicitly in the payload structure used by UI.
-    // For now, allow open access for this internal API or assume protected by network/session if implemented fully.
+    const { items, courseCode, academicYear, semester } = req.body;
+    const userId = req.headers['x-user-id'] || req.body.userId;
+
+    if (!userId) return res.status(401).json({ error: "Unauthorized: Missing User ID" });
+
+    // Validate Context if possible (Items usually don't have it, so we rely on body)
+    // If courseCode is missing, we can't validate role context properly.
+    if (!courseCode) return res.status(400).json({ error: "Missing Course Context" });
+
     try {
+        const roleRow = await repository.getUserRole(userId, courseCode, academicYear, semester);
+        if (!roleRow || roleRow.role !== 'faculty') {
+            return res.status(403).json({ error: "Unauthorized: Faculty access required." });
+        }
+
         await repository.reorderQuestions(items);
         res.json({ success: true });
     } catch (err) {
