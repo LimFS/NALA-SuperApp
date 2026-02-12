@@ -1,5 +1,14 @@
 <template>
-  <div class="h-full flex flex-col bg-gray-50 text-gray-900 font-sans">
+  <div v-if="!isAuthorized" class="h-screen flex items-center justify-center bg-gray-900 text-white">
+      <div class="text-center">
+          <h1 class="text-3xl font-bold mb-4 text-red-500">Access Denied</h1>
+          <p class="mb-8">User <strong>{{ activeUserId || 'Unknown' }}</strong> is not authorized to access ATAS.</p>
+          <button @click="handleLogout" class="px-6 py-3 bg-white text-black font-bold rounded-lg hover:bg-gray-200">
+              Return to Login
+          </button>
+      </div>
+  </div>
+  <div v-else class="h-full flex flex-col bg-gray-50 text-gray-900 font-sans">
     
     <!-- 1. Header Area with Dynamic Course Info -->
     <!-- Responsive: Default h-auto for mobile wrapping, md:h-16 fixed. Padding adjusted. -->
@@ -10,7 +19,7 @@
             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
         </a>
         <div class="w-8 h-8 rounded shrink-0 bg-gray-100 overflow-hidden shadow-sm border border-gray-200">
-           <img v-if="displayIcon" :src="displayIcon" alt="Course Icon" class="w-full h-full object-cover">
+           <img v-if="displayIcon" :src="resolveMediaUrl(displayIcon)" alt="Course Icon" class="w-full h-full object-cover">
            <div v-else class="w-full h-full bg-gradient-to-br from-purple-600 to-indigo-600 flex items-center justify-center text-white font-bold text-xs">
              {{ courseCode?.substring(0, 2) || 'AT' }}
            </div>
@@ -20,7 +29,7 @@
           <h1 class="font-bold text-base md:text-lg tracking-tight flex items-center gap-2 truncate">
             {{ courseCode }} 
             <span class="text-gray-300 font-light hidden sm:inline">|</span>
-            <span class="text-gray-600 font-normal text-sm md:text-base truncate hidden sm:inline">{{ courseName }}</span>
+            <span class="text-gray-600 font-normal text-sm md:text-base truncate hidden sm:inline">{{ fetchedCourseName }}</span>
           </h1>
           <span class="text-[10px] text-purple-600 font-bold uppercase tracking-wider truncate">
              {{ greeting }}, {{ fetchedUserName }}
@@ -38,6 +47,10 @@
         <!-- Settings Button (API Key) -->
         <button @click="showSettings = true" class="p-2 text-gray-400 hover:text-purple-600 transition-colors" title="Settings">
            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        </button>
+
+        <button @click="handleLogout" class="px-3 py-1.5 bg-red-50 text-red-600 text-xs font-bold rounded-lg hover:bg-red-100 transition-colors uppercase tracking-wider">
+            Logout
         </button>
 
         <div class="text-right">
@@ -99,7 +112,7 @@
     <!-- Faculty Dashboard Overlay -->
     <FacultyDashboard 
         v-if="showFacultyDashboard" 
-        @close="showFacultyDashboard = false"
+        @close="handleDashboardClose"
         :courseCode="courseCode"
         :semester="semester"
         :academicYear="academicYear"
@@ -196,8 +209,8 @@
           <!-- Difficulty Badge -->
           <div class="absolute top-0 right-0 p-3 md:p-4 z-10">
              <span class="inline-flex items-center px-2 py-1 md:px-3 rounded-full text-[10px] md:text-xs font-bold bg-gray-100/90 backdrop-blur-sm text-gray-600 border border-gray-200 shadow-sm">
-               <span class="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full mr-2" :class="getDifficultyColor(currentDifficulty)"></span>
-               L{{ currentDifficulty }}: {{ getBloomsLabel(currentDifficulty) }}
+               <span class="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full mr-2" :class="getDifficultyColor(currentQuestion.difficultyLevel || currentDifficulty)"></span>
+               L{{ currentQuestion.difficultyLevel || currentDifficulty }}: {{ currentQuestion.difficultyLevelName || getBloomsLabel(currentQuestion.difficultyLevel || currentDifficulty) }}
              </span>
           </div>
 
@@ -220,7 +233,7 @@
             <div v-if="currentQuestion.media" class="mb-6 rounded-lg overflow-hidden border border-gray-100 bg-gray-50">
               <img 
                 v-if="currentQuestion.media.type === 'image'" 
-                :src="currentQuestion.media.url" 
+                :src="resolveMediaUrl(currentQuestion.media.url)" 
                 :alt="currentQuestion.media.alt || 'Question Image'"
                 class="w-full h-auto max-h-[300px] object-contain mx-auto"
                 loading="lazy"
@@ -231,7 +244,7 @@
                 controls 
                 class="w-full h-auto max-h-[300px] mx-auto"
               >
-                <source :src="currentQuestion.media.url" type="video/mp4">
+                <source :src="resolveMediaUrl(currentQuestion.media.url)" type="video/mp4">
                 Your browser does not support the video tag.
               </video>
             </div>
@@ -341,13 +354,43 @@
 
       </div>
     </div>
+    
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onErrorCaptured } from 'vue';
+import { ref, computed, onMounted, onErrorCaptured, watch } from 'vue';
 import FacultyDashboard from './FacultyDashboard.vue'; // New Import
-// import velocityGraph from './assets/velocity_graph.png'; // Removed in favor of DB static path
+
+// --- ACCESS CONTROL ---
+const urlParams = new URLSearchParams(window.location.search);
+const currentUserEmail = urlParams.get('user');
+const currentUserName = urlParams.get('name'); // Name passed from Dashboard
+
+const ALLOWED_USERS = ['student@nala.ai', 'faculty@nala.ai', 'uuid-del', 'uuid-hal']; // Added Dev IDs
+// Make isAuthorized reactive to the async user resolution
+const isAuthorized = computed(() => {
+    // If no user is identified yet, deny.
+    if (!activeUserId.value) return false;
+    // For now, allow any identified user since Auth handled the token.
+    // Or strictly check list:
+    return ALLOWED_USERS.includes(activeUserId.value);
+});
+
+onMounted(() => {
+    console.log("ATAS Access Check (Initial):", currentUserEmail);
+    // Watch for updates
+    watch(activeUserId, (newVal) => {
+         console.log("ATAS Access Check (Update):", newVal, isAuthorized.value);
+    });
+});
+
+const handleLogout = () => {
+    // Clear tokens for Global Logout
+    localStorage.removeItem('auth_token');
+    localStorage.removeItem('user_data');
+    window.location.href = '/login';
+};
 
 // --- PROPS FOR GENERICITY ---
 const props = defineProps({
@@ -362,6 +405,7 @@ const props = defineProps({
 
 // --- USER & GREETING ---
 const fetchedUserName = ref(props.studentName);
+const fetchedCourseName = ref(props.courseName); // Reactive Course Name
 const greeting = ref('Welcome');
 const fetchedQuestions = ref([]);
 const fetchedSets = ref([]); // Store sets for name resolution
@@ -403,8 +447,9 @@ const userAnswer = ref('');
 const feedback = ref(null);
 const isComplete = ref(false);
 const currentQuestionIndex = ref(0); 
-const currentSetId = ref(1); 
+const currentSetId = ref(null); // Default to null so we can detect "not set"
 const currentSetName = computed(() => {
+    if (!currentSetId.value) return 'Loading...';
     const s = fetchedSets.value.find(s => s.set_id === currentSetId.value);
     return s ? s.name : `Set ${currentSetId.value}`;
 });
@@ -413,6 +458,23 @@ const showModuleTransition = ref(false);
 const getScopedKey = () => `atas_api_key_${props.courseCode || 'GLOBAL'}`;
 const getScopedModelKey = () => `atas_model_pref_${props.courseCode || 'GLOBAL'}`;
 const getScopedProgressKey = () => `atas_progress_${props.courseCode || 'GLOBAL'}`;
+
+// Helper: Resolve Media URL via Gateway
+const resolveMediaUrl = (url) => {
+    if (!url) return '';
+    if (url.startsWith('http') || url.startsWith('data:')) return url;
+    
+    // Dynamic Prefix based on courseCode prop
+    const prefix = props.courseCode ? `/${props.courseCode.toLowerCase()}` : '/mh1810';
+    
+    // If it starts with /assets, prefix with course code to route through Gateway to Agent
+    if (url.startsWith('/assets/')) return `${prefix}${url}`;
+    
+    // If it's a relative path, assume it belongs to the Agent
+    if (!url.startsWith('/')) return `${prefix}/${url}`;
+    
+    return url;
+};
 
 // --- COMPUTED QUESTION BANK (Bucket by Difficulty) ---
 // --- COMPUTED QUESTION BANK (Flat Sorted List) ---
@@ -451,59 +513,109 @@ const currentQuestion = computed(() => {
 // Sync UI Difficulty Label with Current Question
 watch(currentQuestion, (newQ) => {
     if (newQ) {
-        // Prefer q.difficulty, fallback to existing currentDifficulty, fallback to 1. Ensure >= 1.
-        let d = newQ.difficulty ?? currentDifficulty.value ?? 1;
+        // Prefer q.difficultyLevelNum (mapped from repo) or q.difficulty, fallback to existing currentDifficulty, fallback to 1. Ensure >= 1.
+        let d = (newQ.difficultyLevel || newQ.difficulty) ?? currentDifficulty.value ?? 1;
         if (d < 1) d = 1;
         currentDifficulty.value = d;
     }
 });
 
 // --- PROGRESS PERSISTENCE ---
-import { watch } from 'vue';
+// --- PROGRESS PERSISTENCE ---
+// import { watch, computed } from 'vue'; // Already imported above
 
-// Use absolute path routed via Gateway to ensure correct targeting
-const API_BASE = '/atas/api';
+// Use dynamic path derivation to handle Gateway routing correctly
+// browser: /mh1810 -> api relative is /api (Wrong)
+// browser: /mh1810/ -> api relative is /mh1810/api (Correct)
+// Fix: Force the prefix from location
+const getApiBase = () => {
+    // If running solely on localhost:3010 (dev backend), just use /api
+    if (window.location.port === '3010') return '/api';
+
+    const path = window.location.pathname; // e.g. "/mh1810" or "/mh1810/"
+    // Split by slash and get the first segment
+    const segments = path.split('/').filter(p => p.length > 0);
+    
+    // If we have a course code prefix (limit to alphanumeric to avoid oddities)
+    if (segments.length > 0 && /^[a-zA-Z0-9]+$/.test(segments[0])) {
+         // Construct absolute path relative to root
+         return `/${segments[0]}/api`;
+    }
+    return '/api'; // Fallback for dev/localhost root
+};
+const API_BASE = getApiBase();
 
 // Helper to get userId
 const getUserId = () => activeUserId.value;
 
+// Store Backend-Determined Config
+const configAy = ref(null);
+const configSem = ref(null);
+
 // Helper: Parse Semester Prop (e.g., "AY2025 Semester 2")
 const getAySem = () => {
-    const parts = props.semester.split(' Semester ');
-    if (parts.length === 2) return { ay: parts[0], sem: `Semester ${parts[1]}` };
-    return { ay: 'AY2025', sem: 'Semester 2' }; // Fallback
+    // 1. URL Params
+    const uAy = urlParams.get('academicYear');
+    const uSem = urlParams.get('semester');
+    if (uAy && uSem) return { ay: uAy, sem: uSem };
+
+    // 2. Props (Explicit Override)
+    if (props.academicYear && props.semester) {
+        return { ay: props.academicYear, sem: props.semester };
+    }
+
+    // 3. Dynamic Backend Config (The "Latest" Logic)
+    if (configAy.value && configSem.value) {
+        return { ay: configAy.value, sem: configSem.value };
+    }
+
+    // 4. Fallback (Last Resort)
+    return { ay: 'AY2025', sem: 'Semester 2' };
 };
 
 const saveProgress = async () => {
-    // ... (rest of local/server save logic)
-    const state = {
+    if (!activeUserId.value) return; 
+
+    // Construct the Set-Specific State
+    const setState = {
         questionCount: questionCount.value,
-        currentDifficulty: currentDifficulty.value,
         currentQuestionIndex: currentQuestionIndex.value,
-        currentSetId: currentSetId.value,
-        showModuleTransition: showModuleTransition.value,
+        currentDifficulty: currentDifficulty.value,
         isComplete: isComplete.value,
+        lastActiveQuestionUuid: currentQuestion.value?.id || null, // ADDED: Persist UUID
         timestamp: Date.now()
     };
     
-    // 1. Local Persistence
-    localStorage.setItem(getScopedProgressKey(), JSON.stringify(state));
+    // 1. Local Persistence (Update the specific set in the cached full object)
+    let fullState = {};
+    try {
+        const cached = localStorage.getItem(getScopedProgressKey());
+        if (cached) fullState = JSON.parse(cached);
+    } catch (e) {}
+    
+    fullState.lastActiveSetId = currentSetId.value;
+    fullState.sets = fullState.sets || {};
+    fullState.sets[currentSetId.value] = setState;
+    
+    localStorage.setItem(getScopedProgressKey(), JSON.stringify(fullState));
 
     // 2. Server Persistence
     try {
         const { ay, sem } = getAySem();
         await fetch(`${API_BASE}/progress`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 
+                'Content-Type': 'application/json',
+                'X-User-Id': getUserId() 
+            },
             body: JSON.stringify({
-                userId: getUserId(),
                 courseCode: props.courseCode,
                 academicYear: ay,
                 semester: sem,
                 currentSetId: currentSetId.value,
                 currentDifficulty: currentDifficulty.value,
                 lastActiveQuestionUuid: currentQuestion.value?.id || null, 
-                data: state
+                data: setState // Send ONLY this set's data, backend merges it
             })
         });
     } catch (e) {
@@ -511,61 +623,159 @@ const saveProgress = async () => {
     }
 };
 
+// Global cache to hold the full progress object
+const fullProgressCache = ref({ sets: {} });
+
+const loadSetState = (setId) => {
+    const setIds = Object.keys(fullProgressCache.value.sets || {});
+    // If we have data for this set, load it
+    if (fullProgressCache.value.sets && fullProgressCache.value.sets[setId]) {
+        const s = fullProgressCache.value.sets[setId];
+        questionCount.value = s.questionCount ?? 0;
+        
+        let d = s.currentDifficulty ?? 1;
+        if (d < 1) d = 1;
+        currentDifficulty.value = d;
+        isComplete.value = s.isComplete ?? false;
+
+        // SURGICAL FIX: "Latest Question" Logic
+        // Prefer UUID lookup over fragile index
+        let resolvedIndex = s.currentQuestionIndex ?? 0;
+        
+        if (s.lastActiveQuestionUuid) {
+             const targetIdx = questionBank.value.findIndex(q => q.id === s.lastActiveQuestionUuid);
+             if (targetIdx !== -1) {
+                 resolvedIndex = targetIdx;
+                 console.log(`ATA: Restored to specific question ${s.lastActiveQuestionUuid} at index ${targetIdx}`);
+             } else {
+                 console.warn(`ATA: Saved question ${s.lastActiveQuestionUuid} not found in current bank. Fallback to index ${resolvedIndex}`);
+             }
+        }
+        
+        currentQuestionIndex.value = resolvedIndex;
+        
+        // Auto-advance logic (Consistency Check)
+        if (questionCount.value > currentQuestionIndex.value) {
+             currentQuestionIndex.value = questionCount.value;
+        }
+    } else {
+        // No data for this set, reset to defaults
+        questionCount.value = 0;
+        currentQuestionIndex.value = 0;
+        currentDifficulty.value = 1;
+        isComplete.value = false;
+    }
+};
+
 const restoreProgress = async () => {
-    // Strategy: Try Server First -> Fallback to LocalStorage
     try {
         const { ay, sem } = getAySem();
         const query = new URLSearchParams({ academicYear: ay, semester: sem });
-        const res = await fetch(`${API_BASE}/progress/${props.courseCode}/${getUserId()}?${query}`);
+        const res = await fetch(`${API_BASE}/progress/${props.courseCode}?${query}`, {
+            headers: { 'X-User-Id': getUserId() }
+        });
+        
         if (res.ok) {
             const json = await res.json();
             if (json.found && json.data) {
-                const state = json.data;
-                // Hydrate Store
-                questionCount.value = state.questionCount ?? 0;
-                let d = state.currentDifficulty ?? 1;
-                if (d < 1) d = 1;
-                currentDifficulty.value = d;
-                currentQuestionIndex.value = state.currentQuestionIndex ?? 0;
-                currentSetId.value = state.currentSetId ?? 1;
-                showModuleTransition.value = state.showModuleTransition ?? false;
-                isComplete.value = state.isComplete ?? false;
-                console.log("ATA: Progress Restored from SERVER", state);
-                return; // Server sync successful
+                // Parse hierarchical data
+                const parsed = typeof json.data === 'string' ? JSON.parse(json.data) : json.data;
+                fullProgressCache.value = parsed;
+                
+                // ROBUST WATERFALL SELECTION:
+                // Iterate through sorted sets. Find first one that is NOT complete.
+                let targetSet = null;
+                
+                // Sort sets to be sure (though fetchSets should have done it)
+                const sorted = [...fetchedSets.value].sort((a, b) => {
+                    const seqA = a.sequenceOrder || a.sequence_order || 999;
+                    const seqB = b.sequenceOrder || b.sequence_order || 999;
+                    return seqA - seqB;
+                });
+
+                for (const set of sorted) {
+                    const setData = parsed.sets?.[set.set_id];
+                    // If no data, or data exists but not complete -> This is our target
+                    if (!setData || !setData.isComplete) {
+                        targetSet = set.set_id;
+                        break;
+                    }
+                    // If complete, continue loop (Effectively Auto-Advance)
+                    console.log(`ATA: Set ${set.set_id} is complete. Advancing...`);
+                }
+                
+                // If all complete, stay on last
+                if (!targetSet && sorted.length > 0) {
+                     targetSet = sorted[sorted.length - 1].set_id;
+                }
+                
+                // Final Fallback if still null (should cover above, but safety)
+                if (!targetSet && fetchedSets.value.length > 0) targetSet = fetchedSets.value[0].set_id;
+                
+                currentSetId.value = targetSet;
+                loadSetState(targetSet);
+                
+                console.log("ATA: Progress Restored via Waterfall. Target:", targetSet);
+                return; 
             } else {
                 // SERVER EXPLICITLY SAYS NO PROGRESS -> PURGE LOCAL STATE
-                console.log("ATA: No progress on server, clearing stale local state.");
+                console.log("ATA: Server has no record. Purging stale local cache.");
                 localStorage.removeItem(getScopedProgressKey());
-                return; // Do NOT fallback to local storage
+                // Do NOT return here, let it fall through to Final Fallback (Sorted Default)
             }
         }
     } catch (e) {
-        console.warn("ATA: Server restore failed, using local fallback", e);
+        console.warn("ATA: Server restore failed", e);
     }
-
+    
     // Fallback: LocalStorage
     const saved = localStorage.getItem(getScopedProgressKey());
     if (saved) {
         try {
-            const state = JSON.parse(saved);
-            questionCount.value = state.questionCount ?? 0;
-            let d = state.currentDifficulty ?? 1;
-            if (d < 1) d = 1;
-            currentDifficulty.value = d;
-            currentQuestionIndex.value = state.currentQuestionIndex ?? 0;
-            currentSetId.value = state.currentSetId ?? 1;
-            showModuleTransition.value = state.showModuleTransition ?? false;
-            isComplete.value = state.isComplete ?? false;
-            console.log("ATA: Progress Restored from LOCAL", state);
-        } catch (e) {
-            console.warn("ATA: Failed to restore local progress", e);
-        }
+            const parsed = JSON.parse(saved);
+            fullProgressCache.value = parsed;
+            let targetSet = parsed.lastActiveSetId || currentSetId.value;
+            currentSetId.value = targetSet;
+            loadSetState(targetSet);
+            return;
+        } catch (e) {}
+    }
+
+    // FINAL FALLBACK: Default to First Set by Sequence
+    if (fetchedSets.value.length > 0) {
+        // ... sort logic matches previous attempt
+        const sorted = [...fetchedSets.value].sort((a, b) => {
+            const seqA = a.sequenceOrder || a.sequence_order || 999;
+            const seqB = b.sequenceOrder || b.sequence_order || 999;
+            return seqA - seqB;
+        });
+        const firstSet = sorted[0];
+        console.log("ATA: DEBUG - Full Sorted Sets:", sorted.map(s => ({
+            id: s.set_id, 
+            name: s.name, 
+            seq: s.sequenceOrder || s.sequence_order
+        })));
+        console.log(`ATA: No history found. Defaulting to Sequence Start: Set ${firstSet.set_id}`);
+        currentSetId.value = firstSet.set_id;
+        loadSetState(firstSet.set_id); 
     }
 };
 
-// Auto-save on any meaningful state change
+// Watchers
+// 1. When Set Changes, Load that Set's State
+watch(currentSetId, (newId) => {
+    // CRITICAL: Clear UI artifacts from previous set
+    feedback.value = null;
+    userAnswer.value = '';
+    showModuleTransition.value = false;
+    errorState.value = null;
+    
+    loadSetState(newId);
+});
+
+// 2. Auto-save specifics
 watch(
-    [questionCount, currentDifficulty, currentSetId, showModuleTransition, isComplete], 
+    [questionCount, currentDifficulty, showModuleTransition, isComplete, currentQuestionIndex], 
     saveProgress, 
     { deep: true }
 );
@@ -574,23 +784,29 @@ watch(
 
 const fetchConfig = async () => {
     try {
-        const res = await fetch(`${API_BASE}/config/${props.courseCode}`);
+        // Fetch config WITHOUT AY/Sem params to let backend decide "Latest"
+        const res = await fetch(`${API_BASE}/config?courseCode=${props.courseCode}`);
         if (res.ok) {
             const cfg = await res.json();
-            if (cfg.found) {
-                if (cfg.maxQuestions) maxQuestions.value = cfg.maxQuestions;
-                if (cfg.promptText) promptTemplate.value = cfg.promptText;
-                // We could also set activeModel here if we wanted to enforce it
-            }
+            
+            // Capture Dynamic AY/Sem
+            if (cfg.academicYear) configAy.value = cfg.academicYear;
+            if (cfg.semester) configSem.value = cfg.semester;
+
+            if (cfg.maxQuestions) maxQuestions.value = cfg.maxQuestions;
+            if (cfg.promptTemplate) promptTemplate.value = cfg.promptTemplate;
+            if (cfg.iconUrl) courseIcon.value = cfg.iconUrl; // Ensure Icon Updated
         }
     } catch (e) {
         console.warn("ATA: Failed to fetch config", e);
     }
 };
 
+
 // Perform restore on mount (after props are ready)
 // --- IDENTITY & ROLE MANAGEMENT ---
-const activeUserId = ref('uuid-del'); // Default to Del
+// --- IDENTITY & ROLE MANAGEMENT ---
+const activeUserId = ref(currentUserEmail || 'uuid-del'); // Default to Email if valid, else Del
 // Use dynamic courseIcon.value fetched from DB
 const courseIcon = ref(''); // Initialize empty
 const userRole = ref('student');
@@ -601,62 +817,172 @@ const dashboardUrl = ref('http://localhost:8000'); // Default (Producible URL) u
 
 const switchUser = async (userId) => {
     activeUserId.value = userId;
+    if (userId === 'uuid-del') fetchedUserName.value = 'Del';
+    if (userId === 'uuid-hal') fetchedUserName.value = 'Hal';
+    
+    // CRITICAL: Clear in-memory state to prevent leakage
+    fullProgressCache.value = { sets: {} };
+    currentQuestionIndex.value = 0;
+    questionCount.value = 0;
+    isComplete.value = false;
+    currentSetId.value = null; // Force reload
+
     // Clear local progress cache to avoid mixing users
     localStorage.removeItem(getScopedProgressKey()); 
+    await loadUserContext();
+    // Force refresh questions to see any Faculty edits
+    await loadQuestions();
+};
+
+const handleDashboardClose = async () => {
+    showFacultyDashboard.value = false;
+    // Refresh Content to reflect any reordering/edits
+    await loadQuestions();
     await loadUserContext();
 };
 
 const loadUserContext = async () => {
     try {
-        // 1. Fetch Identity
-        const res = await fetch(`/api/user/me?userId=${activeUserId.value}`);
-        if (res.ok) {
-            const user = await res.json();
-            fetchedUserName.value = user.first_name || 'Student';
+        const urlP = new URLSearchParams(window.location.search);
+        const token = urlP.get('token');
+        const legacyUser = urlP.get('user');
+
+        // 0. Try to restore from LocalStorage if no params (Handle Refresh)
+        if (!token && !legacyUser) {
+             try {
+                 const cached = localStorage.getItem('atas_user_context');
+                 if (cached) {
+                     const c = JSON.parse(cached);
+                     // Validate expiry or validity? For now trust local cache for session.
+                     activeUserId.value = c.userId;
+                     fetchedUserName.value = c.userName;
+                     userRole.value = c.role;
+                     console.log("ATA: Restored User from Cache", c.userId);
+                 }
+             } catch (e) {}
         }
 
-        // New: Fetch Course Config (for promptTemplate and courseIcon)
-        try {
+        let identifiedEmail = legacyUser || activeUserId.value; 
+
+        // 1. Token Exchange (Secure Handoff)
+        if (token) {
+            try {
+                const exRes = await fetch(`${API_BASE}/auth/exchange-token`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ token })
+                });
+                if (exRes.ok) {
+                    const data = await exRes.json();
+                    identifiedEmail = data.email;
+                    activeUserId.value = data.email;
+                    userRole.value = data.role;
+                    fetchedUserName.value = data.name;
+                    
+                    // PERSIST USER IDENTITY
+                    localStorage.setItem('atas_user_context', JSON.stringify({
+                        userId: data.email,
+                        userName: data.name,
+                        role: data.role,
+                        timestamp: Date.now()
+                    }));
+
+                    // Clean URL (Remove Token for aesthetics/security)
+                    const newUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
+                    window.history.replaceState({path:newUrl},'',newUrl);
+                    
+                    console.log("ATA: Secure Handoff Success", identifiedEmail);
+                } else {
+                    console.error("ATA: Token Exchange Failed");
+                }
+            } catch (e) {
+                console.error("ATA: Token Network Error", e);
+            }
+        } 
+        
+        // 2. Fetch Config & Sets (using identifiedEmail)
+        if (activeUserId.value) {
+            // Fix for Demo User Names
+            if (!token && activeUserId.value === 'uuid-del') fetchedUserName.value = 'Del';
+            if (!token && activeUserId.value === 'uuid-hal') fetchedUserName.value = 'Hal';
+
             const { ay, sem } = getAySem();
+
+            // 2a. Fetch Config
             const configRes = await fetch(`${API_BASE}/config?courseCode=${props.courseCode}&academicYear=${ay}&semester=${sem}`);
             if (configRes.ok) {
                 const data = await configRes.json();
                 if (data.promptTemplate) promptTemplate.value = data.promptTemplate;
                 if (data.iconUrl) courseIcon.value = data.iconUrl; 
-                if (data.dashboardUrl) dashboardUrl.value = data.dashboardUrl; // Dynamic Back Link
+                if (data.dashboardUrl) dashboardUrl.value = data.dashboardUrl;
+                if (data.courseName) fetchedCourseName.value = data.courseName; 
             }
-            // New: Fetch Sets for Context
+            
+            // 2b. Fetch Sets
+            console.log("ATA: Fetching sets for user:", activeUserId.value);
             const setsRes = await fetch(`${API_BASE}/sets/${props.courseCode}?userId=${activeUserId.value}&academicYear=${ay}&semester=${sem}`);
             if (setsRes.ok) {
-                fetchedSets.value = await setsRes.json();
+                const setsData = await setsRes.json();
+                console.log("ATA: Sets loaded:", setsData.length);
                 
-                // VALIDATION: Ensure currentSetId points to a valid, visible set
-                if (fetchedSets.value.length > 0) {
-                    const exists = fetchedSets.value.find(s => s.set_id === currentSetId.value);
-                    if (!exists) {
-                        console.log(`ATA: Validating Set Context - Set ${currentSetId.value} not found/visible. Switching to ${fetchedSets.value[0].set_id}`);
-                        currentSetId.value = fetchedSets.value[0].set_id;
-                    }
+                fetchedSets.value = setsData.sort((a, b) => {
+                    const seqA = a.sequenceOrder || a.sequence_order || 999;
+                    const seqB = b.sequenceOrder || b.sequence_order || 999;
+                    if (seqA !== seqB) return seqA - seqB;
+                    return a.set_id - b.set_id;
+                });
+
+                if (fetchedSets.value.length > 0 && !currentSetId.value) {
+                    currentSetId.value = fetchedSets.value[0].set_id;
                 }
+            } else {
+                 console.error("ATA: Failed to fetch sets", setsRes.status);
             }
-        } catch (e) {
-            console.warn("ATA: Failed to fetch course metadata", e);
-        }
 
-        // 2. Fetch Role
-        const { ay, sem } = getAySem();
-        const roleRes = await fetch(`${API_BASE}/auth/role?userId=${activeUserId.value}&courseCode=${props.courseCode}&academicYear=${ay}&semester=${sem}`);
-        if (roleRes.ok) {
-            const data = await roleRes.json();
-            userRole.value = data.role;
-            console.log(`ATA: User ${activeUserId.value} is ${userRole.value}`);
-        }
+            // 3. Fetch Role (If not already set by Token)
+            if (!token) {
+                 const roleRes = await fetch(`${API_BASE}/auth/role?userId=${activeUserId.value}&courseCode=${props.courseCode}&academicYear=${ay}&semester=${sem}`);
+                 if (roleRes.ok) {
+                     const data = await roleRes.json();
+                     userRole.value = data.role;
+                 }
+            }
 
-        // 3. Restore Progress (for this user)
-        await restoreProgress();
+             // PERSIST AFTER ROLE IS CONFIRMED
+             if (!token) {
+                 localStorage.setItem('atas_user_context', JSON.stringify({
+                    userId: activeUserId.value,
+                    userName: fetchedUserName.value,
+                    role: userRole.value,
+                    timestamp: Date.now()
+                 }));
+             }
+
+             // 4. Restore Progress
+            await restoreProgress();
+        }
 
     } catch (e) {
         console.warn("ATA: Context load failed", e);
+    }
+};
+
+const loadQuestions = async () => {
+    try {
+        const { ay, sem } = getAySem();
+        // Add timestamp to prevent caching
+        const query = new URLSearchParams({ academicYear: ay, semester: sem, _t: Date.now() });
+        const res = await fetch(`${API_BASE}/courses/${props.courseCode}/questions?${query}`, {
+            headers: { 'X-User-Id': activeUserId.value }
+        });
+        if (res.ok) {
+            fetchedQuestions.value = await res.json();
+            console.log("ATA: Questions loaded/refreshed", fetchedQuestions.value.length);
+        } else {
+            console.warn("ATA: Failed to load questions", res.status);
+        }
+    } catch (e) {
+        console.warn("ATA: Network error fetching questions", e);
     }
 };
 
@@ -665,24 +991,7 @@ onMounted(async () => {
     updateGreeting();
     await fetchConfig();
     await loadUserContext();
-
-    // 3. Fetch Questions
-    try {
-        const { ay, sem } = getAySem();
-        // Determine Set ID? No, fetch ALL questions for the course/semester
-        // The endpoint /questions fetches ALL questions (sorted by Set/Difficulty)
-        // Filtering happens in client via computed `questionBank`
-        const query = new URLSearchParams({ academicYear: ay, semester: sem });
-        const res = await fetch(`${API_BASE}/courses/${props.courseCode}/questions?${query}`);
-        if (res.ok) {
-            fetchedQuestions.value = await res.json();
-            console.log("ATA: Questions loaded", fetchedQuestions.value.length);
-        } else {
-            console.warn("ATA: Failed to load questions", res.status);
-        }
-    } catch (e) {
-        console.warn("ATA: Network error fetching questions", e);
-    }
+    await loadQuestions();
 });
 
 
@@ -739,31 +1048,27 @@ const submitAnswer = async () => {
   // Note: We no longer check client-side apiKey.value as it's handled by backend.
   if (currentQuestion.value.type !== 'mcq') { 
      try {
-       // Construct Prompt Safely
-       // Construct Prompt Dynamic from Database
-       let finalPrompt = promptTemplate.value;
-       
-       if (!finalPrompt) {
-            console.error("ATA Grade Error: System Prompt missing from Database configuration.");
-            throw new Error("Course Configuration Error: Missing System Prompt.");
-       }
-
-       const promptText = finalPrompt
-            .replace('{{questionText}}', currentQuestion.value.question_text || currentQuestion.value.text || '')
-            .replace('{{answerKey}}', validAnswers.join(', '))
-            .replace('{{studentAnswer}}', userVal)
-            .replace('{{hintPolicy}}', currentQuestion.value.hint || 'Guide them toward the core concept.')
-            .replace('{{explanation}}', currentQuestion.value.explanation || 'Explain why the answer is correct.');
-
-       // Call Backend Proxy (No Client-Side Key)
+       // Call Backend Grade Endpoint (Structured Payload)
+       // This moves prompt construction to server for security and audit trail (versioning)
        const url = `${API_BASE}/grade`; 
+
+       const payload = {
+           userId: activeUserId.value,
+           courseCode: props.courseCode,
+           academicYear: getAySem().ay,
+           semester: getAySem().sem,
+           questionId: currentQuestion.value.id,
+           questionVersionUuid: currentQuestion.value.version_uuid, // Critical for Audit Trail
+           studentAnswer: userVal,
+           // Optional: Pass rubrics/context if dynamic, but server should ideally fetch from DB
+           context: currentQuestion.value.context,
+           rubrics: currentQuestion.value.rubrics || currentQuestion.value.rubric
+       };
 
        let response = await fetch(url, {
          method: 'POST',
          headers: { 'Content-Type': 'application/json' },
-         body: JSON.stringify({
-           contents: [{ parts: [{ text: promptText }] }]
-         })
+         body: JSON.stringify(payload)
        });
        
        // SRE: Retry logic (omitted for proxy as backend handles connection)
@@ -820,10 +1125,9 @@ const submitAnswer = async () => {
 
       // Standard Feedback Text Selection
       if (isCorrect) {
-          if (!feedbackText) feedbackText = currentQuestion.value.explanation;
+          feedbackText = currentQuestion.value.explanation || "Correct! Well done.";
       } else {
-          // Append debug info if it exists
-          feedbackText = (feedbackText || "") + currentQuestion.value.hint; 
+          feedbackText = currentQuestion.value.hint || "Incorrect. Try reviewing the concepts.";
           
           // Special Mock Logic for Q4 (MCQ specific hints)
           if (currentQuestion.value.type === 'mcq' && userAnswer.value) {
@@ -863,6 +1167,15 @@ const submitAnswer = async () => {
   };
   
   if (isCorrect) {
+     // Trigger Progress Update immediately (Requested by User)
+     // Guard against double-counting (e.g. reload after answer but before next)
+     if (questionCount.value <= currentQuestionIndex.value) {
+         questionCount.value++;
+     }
+     
+     // Explicitly save immediately (User Request for robust DB update)
+     saveProgress();
+
      // Store pending state changes instead of applying them immediately
      feedback.value.pendingDifficultyUpdate = (currentDifficulty.value < 6); 
   }
@@ -875,7 +1188,7 @@ const nextQuestion = () => {
     // Standard Linear Progression: Just move to next question
     // Question Bank is already sorted by Difficulty -> ID
     
-    questionCount.value++; 
+    // questionCount already incremented in submitAnswer
     currentQuestionIndex.value++; 
     
     // Check for Set Completion
@@ -888,18 +1201,48 @@ const nextQuestion = () => {
          isComplete.value = true;
       }
     }
+    
+    // PERSIST NAVIGATION: Save new index immediately
+    saveProgress();
   }
   // Clear state for next round
   feedback.value = null;
   userAnswer.value = '';
 };
 
-// Action to proceed from transition screen
-// Action to proceed from transition screen
-const startNextModule = () => {
-    // Dynamic next set (prevent hardcoding 2)
-    const nextSetId = currentSetId.value + 1;
-    currentSetId.value = nextSetId;
+const startNextModule = async () => {
+    // 1. Mark Current Set as Complete
+    const finishedSetId = currentSetId.value;
+    if (finishedSetId) {
+        if (!fullProgressCache.value.sets) fullProgressCache.value.sets = {};
+        
+        // Merge with existing data to keep counts/history if needed
+        fullProgressCache.value.sets[finishedSetId] = {
+            ...fullProgressCache.value.sets[finishedSetId],
+            isComplete: true, 
+            completedAt: new Date().toISOString()
+        };
+        
+        // Persist immediately so reload respects it
+        await saveProgress();
+        console.log(`ATA: Set ${finishedSetId} marked as COMPLETE.`);
+    }
+
+    // 2. Find Next Set
+    const sorted = [...fetchedSets.value].sort((a, b) => {
+        const seqA = a.sequenceOrder || a.sequence_order || 999;
+        const seqB = b.sequenceOrder || b.sequence_order || 999;
+        return seqA - seqB;
+    });
+
+    const currentIndex = sorted.findIndex(s => s.set_id === finishedSetId);
+    if (currentIndex !== -1 && currentIndex < sorted.length - 1) {
+        const nextSet = sorted[currentIndex + 1];
+        currentSetId.value = nextSet.set_id;
+        // loadSetState will trigger via watcher or we can call explicitly
+    } else {
+        alert("You have completed all available modules!");
+    }
     showModuleTransition.value = false;
     
     // Reset Progress State completely for new set
@@ -934,7 +1277,11 @@ const resetTest = () => {
     showModuleTransition.value = false;
     
     // Sync Reset State to Server
+    // Sync Reset State to Server
     saveProgress();
+    
+    // Refresh Data (to pick up any edits)
+    loadQuestions();
 };
 
 const resetTestAndClose = () => {

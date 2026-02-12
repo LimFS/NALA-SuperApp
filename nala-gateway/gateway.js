@@ -12,6 +12,17 @@ app.get('/health', (req, res) => {
     res.json({ status: 'NALA Gateway Operational' });
 });
 
+// --- ERROR HANDLING ---
+const proxyErrorHandler = (err, req, res, next) => {
+    console.error(`[Gateway Proxy Error] ${req.originalUrl} -> ${err.message}`);
+    if (!res.headersSent) {
+        res.status(502).json({ error: "Service Unavailable", details: err.code });
+    }
+};
+
+process.on('uncaughtException', (err) => console.error('[Gateway Critical] Uncaught:', err));
+process.on('unhandledRejection', (reason) => console.error('[Gateway Critical] Unhandled Rejection:', reason));
+
 // --- ROUTING TABLE ---
 
 // 0. API Service (User Identity)
@@ -23,21 +34,20 @@ app.use('/api', createProxyMiddleware({
 // 1. Super App (Frontend) - MOVED TO BOTTOM
 // app.use('/', ...);
 
-// 2. ATAS Agent (MH1810)
-/* app.use('/atas', createProxyMiddleware({
-    target: 'http://127.0.0.1:3001',
-    changeOrigin: true,
-    pathRewrite: {
-        '^/atas': '', // Remove /atas prefix when forwarding
-    }
-})); */
 // ATAS Agent (Calculus)
-app.use('/atas', createProxyMiddleware({
-    target: 'http://127.0.0.1:3001',
+// ATAS Agent (Calculus)
+// ATAS Agent (Calculus) - MH1810 Instance
+// ATAS Agent (Calculus) - MH1810 Instance
+// ATAS Agent (Calculus) - MH1810 Instance
+
+app.use('/mh1810', createProxyMiddleware({
+    target: 'http://127.0.0.1:3010',
     changeOrigin: true,
     pathRewrite: {
-        '^/atas': '',
-    }
+        '^/mh1810': '',
+    },
+    onError: proxyErrorHandler,
+    logLevel: 'debug'
 }));
 
 // 3. CC0001 Agent (DesignThinker)
@@ -67,11 +77,15 @@ app.use('/ned166', createProxyMiddleware({
     }
 }));
 
-// 6. EE2101 Agent (AIGrader)
+// 6. EE2101 Agent (Migrated to ATAS)
+// 6. EE2101 Agent (Restored AI Grader UI)
 app.use('/ee2101', createProxyMiddleware({
-    target: 'http://127.0.0.1:3005',
+    target: 'http://127.0.0.1:3001',
     changeOrigin: true,
-    logLevel: 'debug'
+    pathRewrite: {
+        '^/ee2101': '',
+    },
+    // logLevel: 'debug' 
 }));
 
 // 7. Analytics Agent
@@ -99,9 +113,9 @@ app.use('/', createProxyMiddleware({
     logLevel: 'debug'
 }));
 
-app.listen(PORT, '0.0.0.0', () => {
+app.listen(PORT, () => {
     console.log(`[NALA Gateway] Running on http://localhost:${PORT}`);
     console.log(`- Super App: http://localhost:${PORT}/`);
-    console.log(`- ATAS:      http://localhost:${PORT}/atas`);
+    console.log(`- ATAS:      http://localhost:${PORT}/mh1810`);
     console.log(`- CC0001:    http://localhost:${PORT}/design-thinker`);
 });

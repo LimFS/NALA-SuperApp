@@ -1,0 +1,27 @@
+import { defineConfig } from 'vite'
+import vue from '@vitejs/plugin-vue'
+
+// https://vite.dev/config/
+export default defineConfig({
+  plugins: [vue()],
+  server: {
+    port: 8000,
+    strictPort: true,
+    proxy: {
+      '/atas': {
+        target: 'http://localhost:3010',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/atas/, '')
+      },
+      '/ee2101': {
+        target: 'http://localhost:3005',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/ee2101/, '')
+      },
+      '/api': {
+        target: 'http://localhost:3010', // Default API to ATAS
+        changeOrigin: true
+      }
+    }
+  }
+})

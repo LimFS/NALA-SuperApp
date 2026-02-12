@@ -2,12 +2,27 @@
 import { ref, onMounted, onUnmounted, computed } from 'vue';
 import katex from 'katex';
 import 'katex/dist/katex.min.css';
+import client from '../api/client.js';
 
 // --- STATE ---
 // Dynamic Configuration via URL Params (e.g., ?course=EE2101&user=student_123)
 const urlParams = new URLSearchParams(window.location.search);
 const courseCode = urlParams.get('course') || 'EE2101';
-const userId = ref(urlParams.get('user') || 'del_spooner'); // Default Identity
+const userEmail = urlParams.get('user'); // Identity passed from Dashboard
+const userNameParam = urlParams.get('name'); // Name passed from Dashboard
+
+// ACCESS CONTROL
+const ALLOWED_USERS = ['student@nala.ai', 'faculty@nala.ai'];
+const isAuthorized = ref(ALLOWED_USERS.includes(userEmail));
+
+const handleLogout = () => {
+    // Clear any local tokens if applicable
+    localStorage.removeItem('auth_token');
+    localStorage.removeItem('user_data'); 
+    window.location.href = '/login';
+};
+
+const userId = ref(userEmail || 'uuid-del'); // Default Identity
 const userName = ref(userId.value); // Will be updated by API
 const userIcon = ref(null);
 const activeTab = ref('sketch'); // sketch | latex | upload
@@ -15,6 +30,8 @@ const stage = ref('input'); // input | review | feedback
 const gradingResult = ref(null);
 const isProcessing = ref(false);
 const descriptionStatus = ref('idle'); // idle | loading | success | error
+
+const API_BASE = '/ee2101/api';
 
 // Responsive State
 const isMobile = ref(false);
@@ -24,6 +41,14 @@ const mobileTab = ref('question'); // question | input
 const questions = ref([]);
 const currentQIndex = ref(0);
 const currentQuestion = computed(() => questions.value[currentQIndex.value] || {});
+
+// Helper to handle both flat and nested grade objects (User Request)
+const normalizedGrade = computed(() => {
+    if (!gradingResult.value) return null;
+    const res = gradingResult.value.grade || gradingResult.value;
+    console.log("[App.vue] Normalized Grade:", res); // DEBUG
+    return res;
+});
 
 // Inputs
 const latexInput = ref('');
@@ -45,32 +70,29 @@ onMounted(async () => {
     window.addEventListener('resize', checkMobile);
 
     // 2. Fetch Questions & User Details (Gateway Absolute Path)
+    // 2. Fetch Questions & User Details (Gateway Absolute Path)
     try {
         // Fetch User Details explicitly from Global NALA API (via Gateway)
-        const userRes = await fetch(`/api/user/me?userId=${userId.value}`);
-        if (userRes.ok) {
-            const userData = await userRes.json();
-            userName.value = userData.first_name || userId.value;
-            // Optimistic update if profile_icon exists
-            if (userData.profile_icon) {
-               // Assuming NALA App is on port 5173 (Gateway proxy logic needed or direct Access)
-               // Since AI Grader is on 3005, and images are in Nala App (5173). 
-               // FIX: We should serve this asset via Gateway or duplicate it. 
-               // For now, let's assume Gateway proxies /assets/ to NALA App or we duplicate.
-               // Simpler: Duplicate the asset to AI Grader public folder for safety.
-               userIcon.value = userData.profile_icon;
+        try {
+            if (userNameParam) {
+                 userName.value = userNameParam;
+            } else {
+                 const userData = await client.getUser(userId.value);
+                 userName.value = userData.first_name || userId.value;
+                 // Optimistic update if profile_icon exists
+                 if (userData.profile_icon) {
+                    userIcon.value = userData.profile_icon;
+                 }
             }
+        } catch (uErr) {
+            console.warn("User fetch failed, utilizing default:", uErr);
         }
 
         // Force absolute path to avoid relative path resolution issues with Vite 'base'
-        const res = await fetch(`/ee2101/api/courses/${courseCode}/questions`);
-        if (res.ok) {
-            questions.value = await res.json();
-            currentQIndex.value = 0;
-        } else {
-            console.error("API Error:", res.status);
-            questions.value = [{ question_text: `Error Loading Questions (Status: ${res.status})`, context: "Please check console and network logs." }];
-        }
+        const questionsData = await client.get(`/courses/${courseCode}/questions`);
+        questions.value = questionsData;
+        currentQIndex.value = 0;
+
     } catch(e) { 
         console.error("Network Error:", e); 
         questions.value = [{ question_text: `Network Error: ${e.message}`, context: "Is the server running?" }];
@@ -160,6 +182,10 @@ const goToReview = async () => {
         fileData.value = null;
         stage.value = 'review';
     } else {
+        // Enforce Exclusivity: Clear the other input type to prevent "ghost" images in Review
+        if (activeTab.value === 'sketch') fileData.value = null;
+        if (activeTab.value === 'upload') sketchData.value = null;
+
         // For Sketch/Upload, we must generate a description first
         stage.value = 'review'; // Move to review to show loading
         descriptionStatus.value = 'loading';
@@ -172,16 +198,11 @@ const goToReview = async () => {
 
             if (payload.image) {
                 // Use Gateway-compatible path
-                const res = await fetch('/ee2101/api/describe-image', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-                if (res.ok) {
-                    const data = await res.json();
+                try {
+                    const data = await client.post('/describe-image', payload);
                     latexInput.value = data.description; // Populate for editing
                     descriptionStatus.value = 'success';
-                } else {
+                } catch (e) {
                     latexInput.value = "Error generating description.";
                     descriptionStatus.value = 'error';
                 }
@@ -203,6 +224,12 @@ const editLatex = () => {
     // specific helper to jump to latex edit mode
     activeTab.value = 'latex';
     stage.value = 'input';
+};
+
+const activateSketch = () => {
+    activeTab.value = 'sketch';
+    // Use window.setTimeout explicit or just setTimeout in script scope
+    setTimeout(initCanvas, 100);
 };
 
 // --- RENDER LOGIC ---
@@ -232,6 +259,8 @@ const submitGrading = async () => {
         correctAnswer: currentQuestion.value.answerKey ? currentQuestion.value.answerKey[0] : "",
         // Context Injection (Fixed)
         questionText: currentQuestion.value.question_text,
+        questionId: currentQuestion.value.question_id,
+        setId: currentQuestion.value.set_id,
         context: currentQuestion.value.context,
         rubrics: currentQuestion.value.rubrics,
         hint: currentQuestion.value.hint,
@@ -241,21 +270,39 @@ const submitGrading = async () => {
 
     try {
         // Use Gateway-compatible path
-        const res = await fetch('/ee2101/api/grade', {
-           method: 'POST',
-           headers: { 'Content-Type': 'application/json' },
-           body: JSON.stringify({ userId: userId.value, courseCode: courseCode, inputBundle: bundle }) 
+        // SUBMIT TO ASYNC JOB QUEUE (Rule #2)
+        const jobData = await client.post('/grade', {
+            userId: userId.value,
+            courseCode: courseCode,
+            inputBundle: bundle
         });
+        
+        // POLLING LOOP
+        const jobId = jobData.jobId;
+        const pollInterval = setInterval(async () => {
+            try {
+                const jobStatus = await client.get(`/jobs/${jobId}`);
+                
+                if (jobStatus.status === 'completed') {
+                    console.log("[App.vue] Job Complete. Result:", jobStatus.result); // DEBUG
+                    clearInterval(pollInterval);
+                    gradingResult.value = jobStatus.result;
+                    stage.value = 'feedback';
+                    isProcessing.value = false;
+                } else if (jobStatus.status === 'failed') {
+                    clearInterval(pollInterval);
+                    alert("Grading Failed: " + jobStatus.error);
+                    isProcessing.value = false;
+                }
+            } catch (pollErr) {
+               // Silent retry or log
+               console.warn("Polling retry...", pollErr);
+            }
+        }, 1000);
 
-        if (res.ok) {
-            gradingResult.value = await res.json();
-            stage.value = 'feedback';
-        } else {
-            alert("Grading Failed");
-        }
-    } catch(e) {
-        alert("Network Error");
-    } finally {
+    } catch (e) {
+        console.error("Submission Error:", e);
+        alert("Failed to submit answer. Please try again.");
         isProcessing.value = false;
     }
 };
@@ -281,237 +328,253 @@ const goHome = () => {
 };
 
 const difficultyMap = {
-    1: { label: "Remember", color: "#10b981" }, // Emerald
-    2: { label: "Understand", color: "#3b82f6" }, // Blue
-    3: { label: "Apply", color: "#f59e0b" }, // Amber
-    4: { label: "Analyze", color: "#ec4899" }, // Pink
-    5: { label: "Evaluate", color: "#8b5cf6" }  // Violet
+    1: { label: "Remember", color: "bg-emerald-500" }, 
+    2: { label: "Understand", color: "bg-blue-500" }, 
+    3: { label: "Apply", color: "bg-amber-500" }, 
+    4: { label: "Analyze", color: "bg-pink-500" }, 
+    5: { label: "Evaluate", color: "bg-violet-500" } 
 };
 
 const getDifficulty = (level) => {
-    return difficultyMap[level] || { label: "General", color: "#64748b" };
+    return difficultyMap[level] || { label: "General", color: "bg-slate-500" };
 };
 </script>
 
 <template>
-  <div class="app-container">
+  <div class="flex flex-col h-screen bg-slate-900 text-slate-50 font-sans overflow-hidden overscroll-none">
     <!-- 1. HEADER -->
-    <header class="header">
-        <div class="brand">
-            <button class="home-btn" @click="goHome" title="Back to NALA">
+    <header class="h-16 bg-slate-800 border-b border-slate-700 flex items-center justify-between px-6 shrink-0">
+        <div class="flex items-center gap-3">
+            <button class="w-9 h-9 flex items-center justify-center rounded-lg bg-slate-700 text-slate-400 hover:bg-slate-600 hover:text-white transition-colors" @click="goHome" title="Back to NALA">
                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
             </button>
-            <div class="logo-box-clean">
-                <img :src="'/ee2101/ee2101_icon.png'" alt="EE2101" />
+            <div class="w-9 h-9 flex items-center justify-center rounded-md overflow-hidden bg-white">
+                <img :src="'/ee2101/ee2101_icon.png'" alt="EE2101" class="w-full h-full object-cover" />
             </div>
-            <div class="titles">
-                <h1>Anti-Gravity / {{ courseCode }}</h1>
-                <span class="sub" v-if="!isMobile">Universal AI-Grader</span>
-            </div>
-        </div>
-        <div class="progress-section" v-if="!isMobile">
-            <div class="progress-text">Question {{ currentQIndex + 1 }} / {{ questions.length || 10 }}</div>
-            <div class="progress-bar">
-                <div class="fill" :style="{ width: ((currentQIndex + 1) / (questions.length || 10)) * 100 + '%' }"></div>
+            <div>
+                <h1 class="text-base font-semibold m-0">Anti-Gravity / {{ courseCode }}</h1>
+                <span class="text-xs text-slate-400" v-if="!isMobile">Universal AI-Grader</span>
             </div>
         </div>
-        <div class="user-badge" v-if="!isMobile">
-            <img v-if="userIcon" :src="userIcon" class="header-profile-icon" />
-            <span class="status-dot" v-else></span> 
+        
+        <div class="flex flex-col w-[300px] gap-1" v-if="!isMobile">
+            <div class="text-xs text-slate-400 font-medium">Question {{ currentQIndex + 1 }} / {{ questions.length || 10 }}</div>
+            <div class="h-1.5 bg-slate-700 rounded-full overflow-hidden">
+                <div class="h-full bg-blue-500 transition-all duration-300 ease-out" :style="{ width: ((currentQIndex + 1) / (questions.length || 10)) * 100 + '%' }"></div>
+            </div>
+        </div>
+        
+        <div class="flex items-center gap-4">
+            <button @click="handleLogout" class="text-xs font-bold text-slate-500 hover:text-red-400 uppercase tracking-wider transition-colors mr-2" title="Logout">
+                Logout
+            </button>
+        <div class="flex items-center gap-2 text-sm font-medium bg-slate-900/50 py-1.5 px-3 rounded-full border border-slate-700/50" v-if="!isMobile">
+            <img v-if="userIcon" :src="userIcon" class="w-6 h-6 rounded-full border border-white bg-white" />
+            <span class="w-2 h-2 rounded-full bg-emerald-500" v-else></span> 
             {{ userName }}
         </div>
-        <!-- Mobile Menu Icon could go here -->
+        </div>
     </header>
 
     <!-- MOBILE TABS -->
-    <div class="mobile-tabs" v-if="isMobile">
-        <button :class="{ active: mobileTab === 'question' }" @click="mobileTab = 'question'">
+    <div class="flex bg-slate-900 border-b border-slate-700" v-if="isMobile">
+        <button class="flex-1 p-3 bg-none border-none text-slate-400 font-semibold border-b-2 border-transparent transition-colors" 
+            :class="{ 'text-blue-500 border-blue-500': mobileTab === 'question' }" 
+            @click="mobileTab = 'question'">
             📖 Question
         </button>
-        <button :class="{ active: mobileTab === 'input' }" @click="mobileTab = 'input'">
+        <button class="flex-1 p-3 bg-none border-none text-slate-400 font-semibold border-b-2 border-transparent transition-colors"
+            :class="{ 'text-blue-500 border-blue-500': mobileTab === 'input' }"
+            @click="mobileTab = 'input'">
             ✏️ Answer
         </button>
     </div>
 
     <!-- 2. MAIN LAYOUT -->
-    <main class="workspace">
+    <main class="flex-1 grid grid-cols-1 md:grid-cols-2 overflow-hidden">
         
         <!-- LEFT: QUESTION CARD -->
-        <div class="panel left-panel" v-show="!isMobile || mobileTab === 'question'">
-            <div class="card question-card">
-                <div class="card-header">
-                    <span class="tag">Background Info</span>
+        <div class="p-6 overflow-y-auto border-r border-slate-700 scroll-smooth" v-show="!isMobile || mobileTab === 'question'">
+            <div class="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden shadow-sm">
+                <div class="bg-slate-700/50 px-4 py-2 flex justify-between items-center text-xs font-semibold uppercase tracking-wider text-slate-400">
+                    <span class="bg-slate-700/50 px-2 py-1 rounded">Background Info</span>
                     
                     <!-- DIFFICULTY BADGE -->
-                    <div class="difficulty-badge" v-if="currentQuestion.difficulty">
-                        <span class="dot" :style="{ background: getDifficulty(currentQuestion.difficulty).color }"></span>
+                    <div class="flex items-center gap-1.5 bg-slate-900 border border-slate-700 rounded-full px-3 py-1 text-slate-200" v-if="currentQuestion.difficulty">
+                        <span class="w-1.5 h-1.5 rounded-full" :class="getDifficulty(currentQuestion.difficulty).color"></span>
                         L{{ currentQuestion.difficulty }}: {{ getDifficulty(currentQuestion.difficulty).label }}
                     </div>
 
-                    <span v-if="isMobile" class="mobile-counter">{{ currentQIndex + 1 }}/{{ questions.length || 10 }}</span>
+                    <span v-if="isMobile">{{ currentQIndex + 1 }}/{{ questions.length || 10 }}</span>
                 </div>
-                <div class="card-body">
-                    <p class="context-text">{{ currentQuestion.context || 'Loading context...' }}</p>
-                    <hr class="separator"/>
-                    <h2 class="question-text">
-                        <span class="q-label">[Q]</span> 
+                <div class="p-6">
+                    <p class="text-slate-300 text-base leading-relaxed mb-6">{{ currentQuestion.context || 'Loading context...' }}</p>
+                    <hr class="border-t border-slate-700 my-6"/>
+                    <h2 class="text-xl font-semibold leading-snug text-white mb-4">
+                        <span class="text-blue-400 mr-2">[Q]</span> 
                         {{ currentQuestion.question_text || 'Loading question...' }}
                     </h2>
-                    <div v-if="currentQuestion.media" class="media-box">
-                        <img :src="currentQuestion.media" alt="Question Media" />
+                    <div v-if="currentQuestion.media" class="mt-4 rounded-lg overflow-hidden border border-slate-700">
+                        <img :src="currentQuestion.media" alt="Question Media" class="w-full h-auto object-cover" />
                     </div>
                 </div>
-                <div class="card-footer-right">
-                    <span class="max-score">({{ currentQuestion.max_score || 10 }} Marks)</span>
+                <div class="px-6 py-3 bg-slate-900/30 border-t border-slate-700 text-right">
+                    <span class="text-sm font-mono font-semibold text-slate-400">({{ currentQuestion.max_score || 10 }} Marks)</span>
                 </div>
                 <!-- Mobile Action -->
-                <div v-if="isMobile" class="mobile-action">
-                    <button class="btn-primary full-width" @click="mobileTab = 'input'">Write Answer ></button>
+                <div v-if="isMobile" class="p-4 border-t border-slate-700">
+                    <button class="w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold py-3.5 px-4 rounded-lg transition-colors" @click="mobileTab = 'input'">Write Answer ></button>
                 </div>
             </div>
         </div>
 
         <!-- RIGHT: ANSWER AREA -->
-        <div class="panel right-panel" v-show="!isMobile || mobileTab === 'input'">
+        <div class="p-6 overflow-y-auto" v-show="!isMobile || mobileTab === 'input'">
             
             <!-- STAGE: INPUT -->
-            <div v-if="stage === 'input'" class="stage-container">
-                <div class="tabs">
-                    <button :class="{ active: activeTab === 'sketch' }" @click="activeTab = 'sketch'; setTimeout(initCanvas, 100)">
+            <div v-if="stage === 'input'" class="flex flex-col h-full gap-4 min-h-[400px]">
+                <div class="flex gap-2 border-b-2 border-slate-700 pb-2 overflow-x-auto">
+                    <button class="flex items-center gap-2 px-4 py-2.5 rounded-lg font-semibold text-slate-400 hover:text-slate-200 transition-all whitespace-nowrap"
+                        :class="{ 'text-blue-500 bg-blue-500/10': activeTab === 'sketch' }" 
+                        @click="activateSketch">
                         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.375 2.625a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4Z"/></svg>
                         Sketch
                     </button>
-                    <button :class="{ active: activeTab === 'latex' }" @click="activeTab = 'latex'">
+                    <button class="flex items-center gap-2 px-4 py-2.5 rounded-lg font-semibold text-slate-400 hover:text-slate-200 transition-all whitespace-nowrap"
+                        :class="{ 'text-blue-500 bg-blue-500/10': activeTab === 'latex' }" 
+                        @click="activeTab = 'latex'">
                         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 18h16"/><path d="M4 6h3l5 7-5 7h4"/><path d="M14.5 9h5.5"/></svg>
                         LaTeX
                     </button>
-                    <button :class="{ active: activeTab === 'upload' }" @click="activeTab = 'upload'">
+                    <button class="flex items-center gap-2 px-4 py-2.5 rounded-lg font-semibold text-slate-400 hover:text-slate-200 transition-all whitespace-nowrap"
+                        :class="{ 'text-blue-500 bg-blue-500/10': activeTab === 'upload' }" 
+                        @click="activeTab = 'upload'">
                         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
                         Upload
                     </button>
                 </div>
 
-                <div class="input-content">
+                <div class="flex-1 relative bg-slate-800 rounded-xl border border-slate-700 overflow-hidden shadow-inner">
                     <!-- Sketch -->
-                    <div v-show="activeTab === 'sketch'" class="canvas-wrapper">
+                    <div v-show="activeTab === 'sketch'" class="w-full h-full relative touch-none">
                         <canvas ref="canvasRef" 
+                            class="w-full h-full cursor-crosshair touch-none block"
                             @pointerdown="startDraw" 
                             @pointermove="draw" 
                             @pointerup="stopDraw" 
                             @pointercancel="stopDraw"
                             @pointerleave="stopDraw">
                         </canvas>
-                        <button @click="clearCanvas" class="btn-icon clear-btn" title="Clear">🗑</button>
+                        <button @click="clearCanvas" class="absolute top-3 right-3 w-8 h-8 rounded-md bg-slate-700 text-white flex items-center justify-center hover:bg-red-500 transition-colors shadow-lg z-10" title="Clear">🗑</button>
                     </div>
 
                     <!-- LaTeX -->
-                    <textarea v-show="activeTab === 'latex'" v-model="latexInput" class="code-editor" placeholder="\sum F = ma"></textarea>
+                    <textarea v-show="activeTab === 'latex'" v-model="latexInput" class="w-full h-full bg-slate-900 text-sky-400 p-4 border-none resize-none font-mono text-base outline-none focus:ring-2 focus:ring-blue-500/50" placeholder="\sum F = ma"></textarea>
 
                     <!-- Upload -->
-                    <div v-show="activeTab === 'upload'" class="upload-zone" @click="$refs.fileInput.click()">
-                        <input type="file" ref="fileInput" @change="handleFileUpload" accept="image/*,application/pdf" style="display: none" />
-                        <div v-if="!fileData" class="upload-placeholder">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#475569" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
-                            <span>Click or Drag to Upload Image</span>
+                    <div v-show="activeTab === 'upload'" class="h-full flex flex-col items-center justify-center border-2 border-dashed border-slate-700 m-3 rounded-lg text-slate-400 cursor-pointer hover:border-blue-500 hover:bg-blue-500/5 transition-all group" @click="$refs.fileInput.click()">
+                        <input type="file" ref="fileInput" @change="handleFileUpload" accept="image/*,application/pdf" class="hidden" />
+                        <div v-if="!fileData" class="flex flex-col items-center gap-3 group-hover:text-blue-400 transition-colors">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
+                            <span class="font-medium">Click or Drag to Upload Image</span>
                         </div>
-                        <div v-if="fileData" class="file-preview-container">
-                            <img v-if="fileData.type.startsWith('image/')" :src="fileData.content" class="upload-preview-img" />
-                            <div class="file-info">📄 {{ fileData.name }}</div>
+                        <div v-if="fileData" class="flex flex-col items-center gap-2 mt-3">
+                            <img v-if="fileData.type.startsWith('image/')" :src="fileData.content" class="max-h-52 max-w-full rounded-lg border border-slate-600 shadow-lg" />
+                            <div class="text-sm text-slate-300 font-mono bg-slate-900 px-2 py-1 rounded">📄 {{ fileData.name }}</div>
                         </div>
-                        <div v-else class="placeholder-text">Click or Drag to Upload Image</div>
                     </div>
                 </div>
 
-                <div class="action-footer">
-                    <button class="btn-primary full-width" @click="goToReview" :disabled="isProcessing">
+                <div class="mt-auto pt-4">
+                    <button class="w-full bg-blue-600 hover:bg-blue-500 disabled:bg-slate-600 text-white font-bold py-3.5 px-4 rounded-lg transition-all shadow-lg shadow-blue-900/20 active:scale-[0.98]" @click="goToReview" :disabled="isProcessing">
                         {{ isProcessing ? 'Submitting...' : 'Submit Answer' }}
                     </button>
                 </div>
             </div>
 
             <!-- STAGE: REVIEW -->
-            <div v-if="stage === 'review'" class="stage-container review-mode">
-                <h3>Final Verification</h3>
+            <div v-if="stage === 'review'" class="flex flex-col gap-6 pb-6 animate-in slide-in-from-right-4 duration-300">
+                <h3 class="text-xl font-bold text-white mb-2">Final Verification</h3>
                 
-                <div v-if="descriptionStatus === 'loading'" class="loading-box">
+                <div v-if="descriptionStatus === 'loading'" class="p-12 text-center text-slate-400 italic bg-slate-800/50 rounded-lg border border-slate-700 border-dashed animate-pulse">
                      Analyzing Image... 🤖
                 </div>
                 
-                <div v-else class="review-content">
+                <div v-else class="flex flex-col gap-6">
                     
                     <!-- 1. EDIT AREA (Top) -->
-                    <div class="edit-section">
-                        <label class="section-label">✏️ Edit LaTeX / Text:</label>
-                        <textarea v-model="latexInput" class="review-editor" placeholder="\sum F = ma"></textarea>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-400 mb-2 uppercase tracking-wide">✏️ Edit LaTeX / Text:</label>
+                        <textarea v-model="latexInput" class="w-full min-h-[120px] bg-slate-800 border border-slate-700 rounded-lg text-slate-200 p-4 font-mono text-base outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"></textarea>
                     </div>
 
                     <!-- 2. RENDERED PREVIEW (Bottom) -->
-                    <div class="preview-section">
-                         <label class="section-label">👁️ Rendered Output:</label>
-                         <div class="latex-card" v-html="renderLatex(latexInput)"></div>
+                    <div>
+                         <label class="block text-xs font-bold text-slate-400 mb-2 uppercase tracking-wide">👁️ Rendered Output:</label>
+                         <div class="bg-slate-800 border border-slate-700 rounded-lg p-6 min-h-[80px] flex items-center justify-center text-xl text-white" v-html="renderLatex(latexInput)"></div>
                     </div>
 
                     <!-- 3. ORIGINAL IMAGE (Reference) -->
-                    <div v-if="sketchData || fileData" class="reference-section">
-                        <label class="section-label">📸 Reference Image:</label>
-                        <div class="mini-gallery">
-                            <img v-if="sketchData" :src="sketchData" class="thumbnail" />
-                            <div v-if="fileData" class="file-display">
-                                <img v-if="fileData.type.startsWith('image/')" :src="fileData.content" class="thumbnail" />
-                                <span class="file-name">📄 {{ fileData.name }}</span>
+                    <div v-if="sketchData || fileData">
+                        <label class="block text-xs font-bold text-slate-400 mb-2 uppercase tracking-wide">📸 Reference Image:</label>
+                        <div class="flex gap-3 flex-wrap">
+                            <img v-if="sketchData" :src="sketchData" class="h-20 rounded-md border border-slate-700 bg-slate-900" />
+                            <div v-if="fileData" class="flex flex-col items-center gap-1">
+                                <img v-if="fileData.type.startsWith('image/')" :src="fileData.content" class="h-20 rounded-md border border-slate-700 bg-slate-900" />
+                                <span class="text-xs text-slate-500 font-mono">📄 {{ fileData.name }}</span>
                             </div>
                         </div>
                     </div>
 
                 </div>
-                <div class="action-footer two-btns">
-                    <button class="btn-secondary" @click="backToEdit">Back</button>
-                    <button class="btn-success" @click="submitGrading" :disabled="isProcessing || descriptionStatus === 'loading'">
+                <div class="grid grid-cols-[1fr_2fr] gap-3 mt-auto pt-4">
+                    <button class="bg-slate-700 hover:bg-slate-600 text-white font-semibold py-3.5 px-4 rounded-lg transition-colors" @click="backToEdit">Back</button>
+                    <button class="bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-600 text-white font-bold py-3.5 px-4 rounded-lg transition-all shadow-lg shadow-emerald-900/20 active:scale-[0.98]" @click="submitGrading" :disabled="isProcessing || descriptionStatus === 'loading'">
                         {{ isProcessing ? 'Grading...' : 'Confirm Submission' }}
                     </button>
                 </div>
             </div>
 
             <!-- STAGE: FEEDBACK -->
-            <!-- STAGE: FEEDBACK (Refactored) -->
-            <div v-if="stage === 'feedback'" class="stage-container feedback-mode">
+            <div v-if="stage === 'feedback'" class="flex flex-col gap-6 p-6 h-full animate-in zoom-in-95 duration-300">
                 
-                <div class="feedback-grid">
+                <div class="grid gap-4 w-full">
                     <!-- CARD 1: YOUR ANSWER -->
-                    <div class="feedback-card">
-                        <div class="card-header-small">
+                    <div class="bg-slate-800 border border-slate-700 rounded-xl overflow-hidden flex flex-col">
+                        <div class="bg-slate-900 px-4 py-2 text-xs font-bold uppercase text-slate-400 tracking-wide border-b border-slate-700">
                             👤 Your Answer
                         </div>
-                        <div class="card-content">
+                        <div class="p-4 flex-1">
                             <!-- Show Image if Sketch/Upload -->
-                            <div v-if="sketchData || fileData" class="answer-image-preview">
-                                <img v-if="sketchData" :src="sketchData" />
-                                <div v-if="fileData">{{ fileData.name }}</div>
+                            <div v-if="sketchData || fileData" class="mb-4">
+                                <img v-if="sketchData" :src="sketchData" class="max-w-full rounded-md border border-slate-700" />
+                                <div v-if="fileData" class="text-sm font-mono text-slate-400">{{ fileData.name }}</div>
                             </div>
                             <!-- Show LaTeX -->
-                            <div v-if="latexInput" class="latex-preview-small" v-html="renderLatex(latexInput)"></div>
-                            <div v-else-if="!sketchData && !fileData" class="text-muted">No answer provided.</div>
+                            <div v-if="latexInput" class="p-3 bg-slate-900 rounded-lg text-lg" v-html="renderLatex(latexInput)"></div>
+                            <div v-else-if="!sketchData && !fileData" class="text-slate-500 italic">No answer provided.</div>
                         </div>
                     </div>
 
                     <!-- CARD 2: AI FEEDBACK -->
-                    <div class="feedback-card ai-card">
-                        <div class="card-header-small ai-header">
-                            <span class="ai-badge">✨ AI Graded</span>
-                            <span class="trace-id">Trace: {{ gradingResult?.grade?.traceId?.substring(0,8) }}</span>
+                    <div class="bg-slate-800 border border-blue-500/50 rounded-xl overflow-hidden flex flex-col shadow-[0_0_20px_rgba(59,130,246,0.1)]">
+                        <div class="bg-blue-500/10 px-4 py-2 flex justify-between items-center text-blue-400 border-b border-blue-500/20">
+                            <span class="flex items-center gap-2 font-extrabold tracking-tight text-xs uppercase"><span class="text-lg">✨</span> AI Graded</span>
+                            <span class="font-mono text-xs opacity-70">Trace: {{ normalizedGrade?.traceId?.substring(0,8) }}</span>
                         </div>
-                        <div class="card-content center-content">
-                            <div class="score-minimal">
-                                <span class="score-val">{{ gradingResult?.grade?.score }}</span>
-                                <span class="score-max">/ {{ gradingResult?.grade?.maxScore }}</span>
+                        <div class="p-6 flex flex-col items-center gap-4 text-center">
+                            <div class="flex items-baseline gap-1 leading-none">
+                                <span class="text-5xl font-extrabold text-white drop-shadow-[0_0_10px_rgba(59,130,246,0.5)]">{{ normalizedGrade?.score }}</span>
+                                <span class="text-xl font-semibold text-slate-500">/ {{ normalizedGrade?.maxScore || 10 }}</span>
                             </div>
-                            <p class="feedback-body">{{ gradingResult?.grade?.feedback }}</p>
+                            <p class="text-base leading-relaxed text-slate-200">{{ normalizedGrade?.feedback }}</p>
                         </div>
                     </div>
+
                 </div>
 
-                <div class="action-footer">
-                    <button class="btn-primary full-width" @click="nextQuestion">Next Question ></button>
+                <div class="mt-auto pt-4">
+                    <button class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3.5 px-4 rounded-lg transition-all shadow-lg" @click="nextQuestion">Next Question ></button>
                 </div>
             </div>
 
@@ -519,222 +582,3 @@ const getDifficulty = (level) => {
     </main>
   </div>
 </template>
-
-<style scoped>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=JetBrains+Mono&display=swap');
-
-/* RESET */
-* { box-sizing: border-box; }
-.app-container {
-    font-family: 'Inter', sans-serif;
-    background: #0f172a; /* Slate 900 */
-    color: #f8fafc;
-    height: 100vh;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    /* Prevent rubber-banding on mobile */
-    overscroll-behavior: none;
-}
-
-/* HEADER */
-.header {
-    height: 64px;
-    background: #1e293b;
-    border-bottom: 1px solid #334155;
-    display: flex;
-    align-items: center;
-    padding: 0 24px;
-    justify-content: space-between;
-    flex-shrink: 0;
-}
-.brand { display: flex; align-items: center; gap: 12px; }
-.home-btn {
-    background: #334155;
-    border: none;
-    color: #94a3b8;
-    width: 36px; height: 36px;
-    border-radius: 8px;
-    display: flex; align-items: center; justify-content: center;
-    cursor: pointer;
-    transition: all 0.2s;
-}
-.home-btn:hover { background: #475569; color: white; }
-.logo-box-clean { width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; border-radius: 6px; overflow: hidden; background: #fff; }
-.logo-box-clean img { width: 100%; height: 100%; object-fit: cover; }
-.header-profile-icon { width: 24px; height: 24px; border-radius: 50%; margin-right: 8px; border: 1px solid #fff; background: #fff; }
-.logo-box { background: #3b82f6; color: white; font-weight: 800; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; border-radius: 6px; }
-.titles h1 { font-size: 1rem; margin: 0; font-weight: 600; }
-.sub { font-size: 0.75rem; color: #94a3b8; }
-.progress-section { display: flex; flex-direction: column; width: 300px; gap: 4px; }
-.progress-bar { height: 6px; background: #334155; border-radius: 3px; overflow: hidden; }
-.fill { height: 100%; background: #3b82f6; transition: width 0.3s; }
-
-/* MOBILE TABS */
-.mobile-tabs {
-    display: flex;
-    background: #0f172a;
-    border-bottom: 1px solid #334155;
-}
-.mobile-tabs button {
-    flex: 1;
-    padding: 12px;
-    background: none;
-    border: none;
-    color: #94a3b8;
-    font-weight: 600;
-    border-bottom: 3px solid transparent;
-}
-.mobile-tabs button.active {
-    color: #3b82f6;
-    border-bottom: 3px solid #3b82f6;
-}
-
-/* LAYOUT */
-.workspace {
-    flex: 1;
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    overflow: hidden; /* Individual panels scroll */
-}
-.panel {
-    padding: 24px;
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
-}
-.left-panel { border-right: 1px solid #334155; }
-
-/* MOBILE OVERRIDE */
-@media (max-width: 768px) {
-    .workspace { grid-template-columns: 1fr; }
-    .left-panel { border-right: none; }
-    .header { padding: 0 16px; }
-    .panel { padding: 16px; }
-    /* Hide desktop-only elements handled by vue v-if/v-show */
-}
-
-/* CARD */
-.card { background: #1e293b; border-radius: 12px; border: 1px solid #334155; overflow: hidden; }
-.card-header { background: #334155; padding: 8px 16px; font-size: 0.75rem; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: #94a3b8; display: flex; justify-content: space-between; align-items: center; } /* Added align-items center */
-.difficulty-badge {
-    background: #0f172a;
-    border: 1px solid #334155;
-    border-radius: 20px;
-    padding: 4px 12px;
-    font-size: 0.75rem;
-    font-weight: 600;
-    color: #e2e8f0;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-}
-.dot {
-    width: 6px; height: 6px; border-radius: 50%;
-}
-
-.card-body { padding: 24px; }
-.context-text { color: #cbd5e1; font-size: 0.95rem; line-height: 1.6; }
-.separator { border: 0; border-top: 1px solid #334155; margin: 24px 0; }
-.question-text { font-size: 1.25rem; font-weight: 600; line-height: 1.4; color: #fff; }
-.mobile-action { padding: 16px; border-top: 1px solid #334155; }
-.media-box img { max-width: 100%; border-radius: 8px; margin-top: 12px; }
-.card-footer-right { padding: 12px 24px; text-align: right; border-top: 1px solid #334155; background: #162032; }
-.max-score { font-size: 0.85rem; color: #94a3b8; font-weight: 600; font-family: 'JetBrains Mono', monospace; }
-
-/* INPUT STAGE */
-.stage-container { display: flex; flex-direction: column; height: 100%; gap: 16px; min-height: 400px; }
-.tabs { display: flex; gap: 8px; border-bottom: 2px solid #334155; padding-bottom: 8px; overflow-x: auto; }
-.tabs button { background: none; border: none; color: #94a3b8; padding: 10px 16px; cursor: pointer; font-weight: 600; white-space: nowrap; display: flex; align-items: center; gap: 8px; transition: all 0.2s; }
-.tabs button.active { color: #3b82f6; background: rgba(59, 130, 246, 0.1); border-radius: 6px; }
-.tabs button:hover { color: #cbd5e1; }
-
-.input-content { flex: 1; position: relative; background: #1e293b; border-radius: 12px; border: 1px solid #334155; overflow: hidden; }
-.canvas-wrapper { width: 100%; height: 100%; position: relative; touch-action: none; /* Critical for touch drawing */ }
-canvas { width: 100%; height: 100%; cursor: crosshair; touch-action: none; }
-.clear-btn { position: absolute; top: 12px; right: 12px; width: 32px; height: 32px; border-radius: 6px; background: #334155; border: none; color: white; z-index: 10; cursor: pointer; display: flex; align-items: center; justify-content: center; }
-
-.code-editor { width: 100%; height: 100%; background: #0f172a; color: #38bdf8; padding: 16px; border: none; resize: none; font-family: 'JetBrains Mono', monospace; font-size: 1rem; outline: none; }
-.upload-zone { height: 100%; display: flex; align-items: center; justify-content: center; flex-direction: column; border: 2px dashed #334155; margin: 12px; border-radius: 8px; color: #94a3b8; cursor: pointer; transition: border-color 0.2s; }
-.upload-zone:hover { border-color: #3b82f6; background: rgba(59, 130, 246, 0.02); }
-.upload-placeholder { display: flex; flex-direction: column; align-items: center; gap: 12px; }
-
-.action-footer { margin-top: auto; padding-top: 16px; }
-.full-width { width: 100%; }
-.two-btns { display: grid; grid-template-columns: 1fr 2fr; gap: 12px; }
-
-.btn-primary { background: #3b82f6; color: white; border: none; padding: 14px; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 1rem; } /* Touch friendly 44px+ height */
-.btn-secondary { background: #334155; color: white; border: none; padding: 14px; border-radius: 8px; font-weight: 600; cursor: pointer; }
-.btn-success { background: #10b981; color: white; border: none; padding: 14px; border-radius: 8px; font-weight: 600; cursor: pointer; }
-
-.trace-info { font-family: 'JetBrains Mono'; font-size: 0.75rem; color: #64748b; margin-top: 8px; }
-
-/* REFACTORED FEEDBACK STYLES */
-.feedback-mode { padding: 24px; align-items: stretch; justify-content: flex-start; }
-.feedback-grid { display: grid; gap: 16px; width: 100%; margin-bottom: 24px; }
-
-.feedback-card { background: #1e293b; border: 1px solid #334155; border-radius: 12px; overflow: hidden; display: flex; flex-direction: column; }
-.card-header-small { background: #0f172a; padding: 8px 16px; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; color: #94a3b8; letter-spacing: 0.05em; border-bottom: 1px solid #334155; }
-.card-content { padding: 16px; flex: 1; }
-
-/* AI Card Specifics */
-.ai-card { border-color: #3b82f6; box-shadow: 0 0 20px rgba(59, 130, 246, 0.1); }
-.ai-header { background: rgba(59, 130, 246, 0.1); color: #3b82f6; display: flex; justify-content: space-between; align-items: center; }
-.ai-badge { display: inline-flex; align-items: center; gap: 4px; font-weight: 800; }
-.trace-id { font-family: 'JetBrains Mono', monospace; font-size: 0.7rem; opacity: 0.7; }
-
-.center-content { text-align: center; display: flex; flex-direction: column; align-items: center; gap: 12px; }
-
-.score-minimal { display: flex; align-items: baseline; gap: 4px; line-height: 1; }
-.score-val { font-size: 3.5rem; font-weight: 800; color: #fff; text-shadow: 0 0 20px rgba(59, 130, 246, 0.5); }
-.score-max { font-size: 1.5rem; color: #64748b; font-weight: 600; }
-
-.feedback-body { font-size: 1rem; line-height: 1.5; color: #cbd5e1; margin: 0; }
-
-.answer-image-preview img { max-width: 100%; border-radius: 6px; border: 1px solid #334155; }
-.latex-preview-small { font-size: 1rem; padding: 8px; background: #0f172a; border-radius: 6px; }
-
-/* REVIEW MODE STYLES */
-.review-content { display: flex; flex-direction: column; gap: 24px; padding-bottom: 24px; }
-.section-label { display: block; font-size: 0.85rem; font-weight: 600; color: #94a3b8; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.05em; }
-
-.review-editor {
-    width: 100%;
-    min-height: 120px;
-    background: #1e293b;
-    border: 1px solid #334155;
-    border-radius: 8px;
-    color: #e2e8f0;
-    padding: 16px;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 1rem;
-    resize: vertical;
-    outline: none;
-    transition: border-color 0.2s;
-}
-.review-editor:focus { border-color: #3b82f6; }
-
-.latex-card {
-    background: #1e293b;
-    border: 1px solid #334155;
-    border-radius: 8px;
-    padding: 24px;
-    min-height: 80px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1.25rem;
-}
-
-.mini-gallery { display: flex; gap: 12px; flex-wrap: wrap; }
-.thumbnail { height: 80px; border-radius: 6px; border: 1px solid #334155; }
-.file-chip { background: #334155; padding: 8px 12px; border-radius: 6px; font-size: 0.9rem; display: flex; align-items: center; }
-
-.loading-box { padding: 48px; text-align: center; color: #94a3b8; font-style: italic; }
-
-.file-preview-container { display: flex; flex-direction: column; align-items: center; gap: 8px; margin-top: 12px; }
-.upload-preview-img { max-height: 200px; max-width: 100%; border-radius: 8px; border: 1px solid #475569; }
-.file-info { color: #cbd5e1; font-size: 0.9rem; }
-.placeholder-text { color: #64748b; margin-top: 8px; font-size: 0.9rem; }
-.file-display { display: flex; flex-direction: column; align-items: center; gap: 4px; }
-.file-name { font-size: 0.8rem; color: #94a3b8; }
-</style>

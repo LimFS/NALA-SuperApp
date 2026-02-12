@@ -1,0 +1,36 @@
+{
+    "name": "ai-grader-agent",
+    "version": "1.0.0",
+    "type": "module",
+    "description": "AI Grader Agent (MCP Agent)",
+    "main": "server.js",
+    "scripts": {
+        "start": "node server.js",
+        "dev": "vite",
+        "build": "vite build",
+        "build:ui": "vite build"
+    },
+    "dependencies": {
+        "@google/generative-ai": "^0.24.1",
+        "@modelcontextprotocol/sdk": "^1.26.0",
+        "axios": "^1.13.5",
+        "cors": "^2.8.5",
+        "dotenv": "^16.6.1",
+        "express": "^4.18.2",
+        "katex": "^0.16.28",
+        "pg": "^8.18.0",
+        "sqlite3": "^5.1.7"
+    },
+    "devDependencies": {
+        "@vitejs/plugin-vue": "^5.0.0",
+        "autoprefixer": "^10.4.24",
+        "postcss": "^8.5.6",
+        "tailwindcss": "^3.4.1",
+        "vite": "^7.3.1",
+        "vue": "^3.4.0"
+    },
+    "overrides": {
+        "tar": "^7.5.7",
+        "node-gyp": "^12.2.0"
+    }
+}

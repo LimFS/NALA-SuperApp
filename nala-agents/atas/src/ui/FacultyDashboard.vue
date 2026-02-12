@@ -1,7 +1,7 @@
 <template>
   <div class="fixed inset-0 z-50 bg-white flex flex-col animate-in fade-in duration-300">
     <!-- Header -->
-    <div class="flex-none bg-indigo-900 text-white p-4 flex items-center justify-between shadow-md">
+    <div class="flex-none bg-indigo-900 text-white p-4 flex items-center justify-between shadow-md z-10">
        <div class="flex items-center gap-3">
           <div class="p-2 bg-indigo-800 rounded-lg">
              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
@@ -60,7 +60,7 @@
                     <div class="flex items-start gap-4 mb-4">
                         <!-- Preview -->
                         <div class="w-20 h-20 rounded-xl bg-gray-100 border border-gray-200 flex-none overflow-hidden flex items-center justify-center">
-                            <img v-if="config.iconUrl" :src="config.iconUrl" class="w-full h-full object-cover" @error="handleImageError">
+                            <img v-if="config.iconUrl" :src="resolveMediaUrl(config.iconUrl)" class="w-full h-full object-cover" @error="handleImageError">
                             <span v-else class="text-2xl opacity-20">🖼️</span>
                         </div>
                         <div class="flex-1 space-y-3">
@@ -94,7 +94,9 @@
                       </div>
                       <div>
                           <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Custom API Key (Optional)</label>
-                          <input v-model="config.apiKey" type="password" class="w-full border border-gray-300 rounded-lg p-2 text-xs" placeholder="Overwrite global env key">
+                          <form @submit.prevent>
+                              <input v-model="config.apiKey" type="password" autocomplete="new-password" class="w-full border border-gray-300 rounded-lg p-2 text-xs" placeholder="Overwrite global env key">
+                          </form>
                       </div>
                     </div>
                 </div>
@@ -123,6 +125,7 @@
                                <th class="p-4 w-16 text-center">Order</th>
                                <th class="p-4 w-20">ID</th>
                                <th class="p-4">Set Name</th>
+                               <th class="p-4 w-48">Taxonomy</th>
                                <th class="p-4 w-24 text-center">Status</th>
                                <th class="p-4 w-32 text-right">Actions</th>
                            </tr>
@@ -139,6 +142,11 @@
                                <td class="p-4 font-mono text-xs text-gray-500">#{{ set.set_id }}</td>
                                <td class="p-4">
                                    <input v-model="set.name" @change="updateSet(set)" type="text" class="w-full bg-transparent border-b border-transparent hover:border-gray-300 focus:border-indigo-500 focus:outline-none transition-colors py-1 text-sm font-medium text-gray-700 placeholder-gray-400" placeholder="Set Name">
+                               </td>
+                               <td class="p-4">
+                                   <select v-model="set.difficulty_id" @change="updateSetTaxonomy(set)" class="w-full bg-transparent text-xs font-bold text-gray-600 border-none focus:ring-0 cursor-pointer">
+                                       <option v-for="t in taxonomies" :key="t.uuid" :value="t.uuid">{{ t.taxonomy_name }}</option>
+                                   </select>
                                </td>
                                <td class="p-4 text-center">
                                    <button @click="toggleSetVisibility(set)" :class="set.is_visible ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'" class="px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wide transition-colors">
@@ -168,8 +176,16 @@
                        <option :value="null" disabled>Select Question Set...</option>
                        <option v-for="s in sets" :key="s.set_id" :value="s.set_id">{{ s.name }} (Set {{ s.set_id }})</option>
                    </select>
-                   <button v-if="selectedSetId" @click="openQuestionModal()" class="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-indigo-700 shadow-sm">
-                       + Add Question
+                   <button v-if="selectedSetId" @click="openQuestionModal()" class="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-indigo-700 shadow-sm flex items-center gap-2">
+                       <span>+</span> Add Question
+                   </button>
+                   <button v-if="selectedSetId" @click="console.log('AI Generate Triggered')" class="bg-purple-100 text-purple-700 px-4 py-2 rounded-lg text-sm font-bold hover:bg-purple-200 shadow-sm flex items-center gap-2 border border-purple-200">
+                       <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>
+                       AI Generate
+                   </button>
+                   <button v-if="selectedSetId" @click="console.log('Upload File Triggered')" class="bg-white text-gray-700 px-4 py-2 rounded-lg text-sm font-bold hover:bg-gray-50 shadow-sm flex items-center gap-2 border border-gray-300">
+                       <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
+                       Upload File
                    </button>
                </div>
 
@@ -178,16 +194,24 @@
                </div>
 
                <div v-else class="grid grid-cols-1 gap-4">
-                   <div v-for="q in questions" :key="q.id" class="bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex items-start justify-between group hover:border-indigo-300 transition-colors">
+                   <div v-for="(q, index) in sortedQuestions" :key="q.id" class="bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex items-start justify-between group hover:border-indigo-300 transition-colors">
+                       <div class="flex-none flex flex-col items-center mr-4 gap-1 pt-1 opacity-20 group-hover:opacity-100 transition-opacity">
+                            <button @click="moveQuestion(index, -1)" :disabled="index === 0" class="hover:text-indigo-600 disabled:opacity-0 hover:bg-indigo-50 rounded p-0.5">▲</button>
+                            <span class="text-[10px] font-bold text-gray-400 font-mono">{{ index + 1 }}</span>
+                            <button @click="moveQuestion(index, 1)" :disabled="index === sortedQuestions.length - 1" class="hover:text-indigo-600 disabled:opacity-0 hover:bg-indigo-50 rounded p-0.5">▼</button>
+                       </div>
                        <div class="flex-1">
                            <div class="flex items-center gap-2 mb-1">
                                <span class="px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded text-[10px] font-bold uppercase">{{ q.id }}</span>
-                               <span class="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase" :class="getDiffColor(q.difficulty)">L{{ q.difficulty }}</span>
+                               <span class="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase" :class="getDiffColor(q.difficultyLevel || q.difficulty)">L{{ q.difficultyLevel || q.difficulty }}: {{ q.difficultyLevelName || q.difficultyName || 'Level ' + (q.difficultyLevel || q.difficulty) }}</span>
                                <span class="text-xs text-gray-400 font-mono">{{ q.type }}</span>
                            </div>
                            <p class="text-gray-900 font-medium text-sm line-clamp-2">{{ q.question_text }}</p>
                        </div>
                        <div class="flex flex-col gap-2">
+                           <button @click="toggleQuestionVisibility(q)" :class="q.is_visible ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'" class="px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wide transition-colors">
+                               {{ q.is_visible ? 'Active' : 'Hidden' }}
+                           </button>
                            <button @click="openQuestionModal(q)" class="text-xs font-bold text-indigo-600 hover:text-indigo-800 bg-indigo-50 px-3 py-1.5 rounded-lg">Edit</button>
                            <button @click="deleteQuestion(q.id)" class="text-xs font-bold text-red-600 hover:text-red-800 bg-red-50 px-3 py-1.5 rounded-lg">Delete</button>
                        </div>
@@ -275,14 +299,48 @@
                      <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Explanation</label>
                      <textarea v-model="editingQuestion.explanation" rows="2" class="w-full border rounded p-2 text-sm"></textarea>
                 </div>
-                <!-- Media URL + Preview -->
+                <!-- Media -->
                 <div>
-                     <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Image Media</label>
-                     <div class="flex gap-2 mb-2">
+                     <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Media Attachment</label>
+                     <div class="flex items-center gap-4 mb-2 text-xs">
+                        <label class="flex items-center gap-2 cursor-pointer">
+                            <input type="radio" v-model="mediaType" value="link"> 
+                            <span>Image Link</span>
+                        </label>
+                        <label class="flex items-center gap-2 cursor-pointer">
+                            <input type="radio" v-model="mediaType" value="upload"> 
+                            <span>Upload Image</span>
+                        </label>
+                        <label class="flex items-center gap-2 cursor-pointer">
+                            <input type="radio" v-model="mediaType" value="video"> 
+                            <span>Video Link (YouTube)</span>
+                        </label>
+                     </div>
+
+                     <!-- Remote Link -->
+                     <div v-if="mediaType === 'link'" class="flex gap-2 mb-2">
                         <input v-model="mediaUrl" class="flex-1 border rounded p-2 text-sm" placeholder="https://example.com/image.png">
                      </div>
-                     <div v-if="mediaUrl" class="w-full h-32 bg-gray-50 rounded border flex items-center justify-center overflow-hidden">
-                        <img :src="mediaUrl" @error="handleImageError" class="max-h-full max-w-full object-contain">
+
+                     <!-- File Upload -->
+                     <div v-else-if="mediaType === 'upload'" class="flex gap-2 mb-2">
+                        <input type="file" ref="fileInput" accept="image/*" @change="handleFileUpload" class="flex-1 border rounded p-2 text-sm file:mr-4 file:py-1 file:px-2 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100">
+                        <div v-if="isUploading" class="text-xs text-indigo-600 animate-pulse font-bold self-center">Uploading...</div>
+                     </div>
+
+                     <!-- Video Link -->
+                     <div v-else-if="mediaType === 'video'" class="flex gap-2 mb-2">
+                        <input v-model="mediaUrl" class="flex-1 border rounded p-2 text-sm" placeholder="https://youtube.com/watch?v=...">
+                     </div>
+                     
+                     <!-- Preview -->
+                     <div v-if="mediaUrl" class="w-full h-32 bg-gray-50 rounded border flex items-center justify-center overflow-hidden relative">
+                        <img v-if="mediaType !== 'video'" :src="mediaUrl" @error="handleImageError" class="max-h-full max-w-full object-contain">
+                        <div v-else class="text-xs text-gray-500 flex flex-col items-center">
+                            <span>▶️ Video Preview</span>
+                            <span class="text-[10px]">{{ mediaUrl }}</span>
+                        </div>
+                        <button v-if="mediaUrl" @click="clearMedia" class="absolute top-1 right-1 bg-white/80 hover:bg-red-100 text-gray-500 hover:text-red-500 rounded-full p-1 w-6 h-6 flex items-center justify-center shadow-sm">✕</button>
                      </div>
                 </div>
 
@@ -355,6 +413,7 @@ const courseName = ref('Course Name');
 const sets = ref([]);
 const questions = ref([]);
 const analytics = ref([]);
+const taxonomies = ref([]); // New
 const selectedSetId = ref(null);
 
 // Sorting
@@ -382,14 +441,126 @@ const sortedAnalytics = computed(() => {
 
 const editingQuestion = ref(null);
 // Form States (User Friendly)
+const mediaType = ref('link'); // link, upload, video
 const mediaUrl = ref('');
+const isUploading = ref(false);
+const fileInput = ref(null);
+
+const sortedQuestions = computed(() => {
+    // Sort by sequence_order first
+    return [...questions.value].sort((a, b) => {
+        const seqA = a.sequence_order || 0;
+        const seqB = b.sequence_order || 0;
+        return seqA - seqB; 
+    });
+});
+
 const optionList = ref([]);
 const answerList = ref([]);
-const editingJSON = ref({ media: '{}', answerKey: '[]', options: '[]' }); // Keep for legacy fallback if needed
+const editingJSON = ref({ media: '{}', answerKey: '[]', options: '[]' }); 
 
 const handleImageError = (e) => {
     e.target.style.opacity = '0.3';
 };
+
+const clearMedia = () => {
+    mediaUrl.value = '';
+    if (fileInput.value) fileInput.value.value = '';
+};
+
+const handleFileUpload = async (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+        alert("Only image files are allowed.");
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    isUploading.value = true;
+    try {
+        const res = await fetch(`/${props.courseCode.toLowerCase()}/api/upload`, {
+            method: 'POST',
+            body: formData
+        });
+        if (!res.ok) throw new Error("Upload failed");
+        
+        const data = await res.json();
+        mediaUrl.value = data.url;
+    } catch (e) {
+        alert("Failed to upload image.");
+        console.error(e);
+        mediaUrl.value = '';
+    } finally {
+        isUploading.value = false;
+    }
+};
+
+const moveQuestion = async (index, direction) => {
+    const newIndex = index + direction;
+    if (newIndex < 0 || newIndex >= sortedQuestions.value.length) return;
+
+    // Swap logic on sorted array
+    const list = [...sortedQuestions.value];
+    const temp = list[index];
+    list[index] = list[newIndex];
+    list[newIndex] = temp;
+
+    // Re-assign sequence_order based on new array order
+    const updates = list.map((q, idx) => ({
+        id: q.id,
+        sequence_order: idx + 1
+    }));
+    
+    // Update Local State (Optimistic)
+    // We need to update the main `questions` ref, but preserving objects
+    updates.forEach(u => {
+        const q = questions.value.find(qq => qq.id === u.id);
+        if (q) q.sequence_order = u.sequence_order;
+    });
+
+    try {
+        await fetch(`/${props.courseCode.toLowerCase()}/api/questions/reorder`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ items: updates })
+        });
+    } catch (e) {
+        alert("Failed to save order");
+        fetchQuestions(); // Revert
+    }
+};
+
+const updateQuestion = async (q) => {
+    try {
+        await fetch(`/${props.courseCode.toLowerCase()}/api/questions`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                userId: props.userId,
+                question: {
+                    ...q,
+                    courseCode: props.courseCode,
+                    academicYear: props.academicYear,
+                    semester: props.semester
+                }
+            })
+        });
+    } catch (e) {
+        alert("Failed to update question");
+    }
+};
+
+const toggleQuestionVisibility = async (q) => {
+    // Optimistic Update
+    q.is_visible = !q.is_visible; 
+    await updateQuestion(q);
+};
+
+
 
 // --- DIFF COLORS ---
 const getDiffColor = (d) => {
@@ -400,8 +571,14 @@ const getDiffColor = (d) => {
 
 // --- API ---
 const fetchData = async () => {
+    // 0. Fetch Taxonomies
+    try {
+        const tRes = await fetch(`/${props.courseCode.toLowerCase()}/api/taxonomies`);
+        if (tRes.ok) taxonomies.value = await tRes.json();
+    } catch (e) { console.warn("Taxonomy Fetch Error", e); }
+
     // 1. Config
-    const cRes = await fetch(`/atas/api/config`);
+    const cRes = await fetch(`/${props.courseCode.toLowerCase()}/api/config`);
     if (cRes.ok) {
         const d = await cRes.json();
         config.value = { 
@@ -415,7 +592,7 @@ const fetchData = async () => {
 
     // 2. Sets
     try {
-        const sRes = await fetch(`/atas/api/sets/${props.courseCode}?userId=${props.userId}&academicYear=${props.academicYear}&semester=${props.semester}`);
+        const sRes = await fetch(`/${props.courseCode.toLowerCase()}/api/sets/${props.courseCode}?userId=${props.userId}&academicYear=${props.academicYear}&semester=${props.semester}`);
         if (sRes.ok) {
             sets.value = await sRes.json();
             sets.value.forEach((s, i) => { if (!s.sequence_order) s.sequence_order = i + 1; });
@@ -427,7 +604,10 @@ const fetchData = async () => {
 
     // 3. Analytics
     try {
-        const aRes = await fetch(`/atas/api/analytics/${props.courseCode}?userId=${props.userId}&academicYear=${props.academicYear}&semester=${props.semester}`);
+        // PII Masking: userId moved to Header
+        const aRes = await fetch(`/${props.courseCode.toLowerCase()}/api/analytics/${props.courseCode}?academicYear=${props.academicYear}&semester=${props.semester}`, {
+            headers: { 'X-User-Id': props.userId }
+        });
         if (aRes.ok) {
             const d = await aRes.json();
             analytics.value = d.stats;
@@ -438,11 +618,14 @@ const fetchData = async () => {
 };
 
 const saveConfig = async () => {
-    await fetch(`/atas/api/courses/${props.courseCode}/config`, {
+    await fetch(`/${props.courseCode.toLowerCase()}/api/courses/${props.courseCode}/config`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+            'Content-Type': 'application/json',
+            'X-User-Id': props.userId
+        },
         body: JSON.stringify({
-            userId: props.userId,
+            // userId: props.userId, // Removed from body
             academicYear: props.academicYear, semester: props.semester,
             config: config.value
         })
@@ -450,81 +633,152 @@ const saveConfig = async () => {
     alert('Configuration Saved');
 };
 
+const getScopedKey = () => `atas_api_key_${props.courseCode}`;
+
+// Helper: Resolve Media URL via Gateway (Identical to ATAS.vue)
+const resolveMediaUrl = (url) => {
+    if (!url) return '';
+    if (url.startsWith('http') || url.startsWith('data:')) return url;
+    // If it starts with /assets, prefix with current course to route through Gateway to Agent
+    const prefix = `/${props.courseCode.toLowerCase()}`;
+    if (url.startsWith('/assets/')) return `${prefix}${url}`;
+    // If it's a relative path, assume it belongs to the Agent
+    if (!url.startsWith('/')) return `${prefix}/${url}`;
+    return url;
+};
+
 const updateSet = async (set) => {
-    await fetch(`/atas/api/sets/${props.courseCode}`, {
+    await fetch(`/${props.courseCode.toLowerCase()}/api/sets/${props.courseCode}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+            'Content-Type': 'application/json',
+            'X-User-Id': props.userId
+        },
         body: JSON.stringify({
             userId: props.userId,
-            academicYear: props.academicYear, semester: props.semester,
+            academicYear: props.academicYear, 
+            semester: props.semester,
             set: set
         })
     });
 };
 
-const moveSet = (set, dir) => {
-    // Basic reorder logic (swap sequence)
-    // For prototype, we just change the number and save
-    set.sequence_order += dir;
-    updateSet(set);
+// ... (updateSetTaxonomy uses updateSet, so it's covered)
+
+const deleteSet = async (setId) => {
+    // Inject Context into Query Params for Delete
+    const query = new URLSearchParams({
+        userId: props.userId,
+        academicYear: props.academicYear,
+        semester: props.semester
+    }).toString();
+
+    await fetch(`/${props.courseCode.toLowerCase()}/api/sets/${props.courseCode}/${setId}?${query}`, {
+        method: 'DELETE',
+        headers: { 'X-User-Id': props.userId }
+    });
+};
+
+const confirmDeleteSet = async (set) => {
+    if (confirm(`Delete '${set.name}'? This cannot be undone.`)) {
+        try {
+            await deleteSet(set.set_id);
+            // Refresh
+            sets.value = sets.value.filter(s => s.set_id !== set.set_id);
+        } catch (e) {
+            alert("Failed to delete set");
+        }
+    }
+};
+
+const updateSetTaxonomy = async (set) => {
+    // RESTRICTION: Cannot change taxonomy if questions exist
+    // The backend now returns 'question_count' on sets
+    if (set.question_count && Number(set.question_count) > 0) {
+        alert("Action Blocked: Cannot change taxonomy.\n\nThis question set contains existing questions. Changing the taxonomy would invalidate their classification.\n\nPlease remove all questions from this set first.");
+        
+        // Revert UI: We simply re-fetch the sets to restore the original value from server
+        try {
+            const sRes = await fetch(`/${props.courseCode.toLowerCase()}/api/sets/${props.courseCode}?userId=${props.userId}&academicYear=${props.academicYear}&semester=${props.semester}`);
+            if (sRes.ok) {
+                const fetched = await sRes.json();
+                fetched.forEach((s, i) => { if (!s.sequence_order) s.sequence_order = i + 1; });
+                fetched.sort((a,b) => a.sequence_order - b.sequence_order);
+                sets.value = fetched;
+            }
+        } catch (e) { console.error("Revert failed", e); }
+        
+        return;
+    }
+
+    // Look up name
+    const tax = taxonomies.value.find(t => t.uuid === set.difficulty_id);
+    if (tax) set.difficulty_name = tax.taxonomy_name;
+    await updateSet(set);
+};
+
+const toggleSetVisibility = async (set) => {
+    // Optimistic Update
+    set.is_visible = !set.is_visible; 
+    await updateSet(set);
+};
+
+const moveSet = async (set, dir) => {
+    const currentIndex = sets.value.findIndex(s => s.set_id === set.set_id);
+    if (currentIndex === -1) return;
+    
+    const targetIndex = currentIndex + dir;
+    if (targetIndex < 0 || targetIndex >= sets.value.length) return;
+    
+    const targetSet = sets.value[targetIndex];
+    
+    // Swap Sequence Orders
+    const temp = set.sequence_order;
+    set.sequence_order = targetSet.sequence_order;
+    targetSet.sequence_order = temp;
+    
+    // Sort locally essentially immediately for UI
     sets.value.sort((a,b) => a.sequence_order - b.sequence_order);
+
+    // Persist BOTH changes
+    await updateSet(set);
+    await updateSet(targetSet);
 };
 
 const addNewSet = async () => {
-    // Generate UUID for Set ID logic? 
-    // Wait, Sets table uses `set_id` INTEGER? Or did we migrate?
-    // DB Schema says `set_id INTEGER`. 
-    // Switching `set_id` to UUID might break Schema if defined as INTEGER.
-    // DB Schema: `set_id INTEGER NOT NULL`.
-    // OK, for Sets, let's stick to Integer ID (Max + 1) for now as it's scoped and ordered.
-    // BUT for Questions, Schema says `id TEXT PRIMARY KEY`. We CAN usage UUID there.
-    // So ONLY update Questions to use UUID.
-    
-    // Create new Set (Integer ID still best for "Module 1", "Module 2" workflow unless we change UI to freeform).
-    // Let's stick to auto-increment Integer for Sets for user friendliness (Set 1, Set 2).
+    // Stick to auto-increment Integer for Sets for user friendliness (Set 1, Set 2).
     const newId = sets.value.length > 0 ? Math.max(...sets.value.map(s => s.set_id)) + 1 : 1;
     const maxSeq = sets.value.length > 0 ? Math.max(...sets.value.map(s => s.sequence_order)) : 0;
     
+    // Default to Bloom's (First taxonomy or hardcoded UUID)
+    const defaultTax = taxonomies.value.find(t => t.taxonomy_name.includes("Bloom")) || taxonomies.value[0];
+    const difficultyId = defaultTax ? defaultTax.uuid : '0d0ccc1d-0b00-4bf4-9e90-4069d1460fca';
+    const difficultyName = defaultTax ? defaultTax.taxonomy_name : "Bloom's Taxonomy";
+
     const newSet = { 
         set_id: newId, 
         name: `Module ${newId}`, 
         sequence_order: maxSeq + 1, 
-        is_visible: 0 
+        is_visible: 0,
+        difficulty_id: difficultyId,
+        difficulty_name: difficultyName
     };
 
     sets.value.push(newSet);
     await updateSet(newSet);
 };
 
-const confirmDeleteSet = async (setRow) => {
-    if (!confirm(`Are you sure you want to delete "${setRow.name}"? This action cannot be undone.`)) return;
-    
-    try {
-        const query = new URLSearchParams({ 
-            userId: props.userId, 
-            academicYear: props.academicYear, semester: props.semester 
-        });
-        const res = await fetch(`/atas/api/sets/${props.courseCode}/${setRow.set_id}?${query}`, {
-            method: 'DELETE'
-        });
-        
-        if (res.ok) {
-            sets.value = sets.value.filter(s => s.set_id !== setRow.set_id);
-            // Re-normalize order
-            sets.value.forEach((s, i) => {
-                s.sequence_order = i + 1;
-                updateSet(s); // Background update
-            });
-        }
-    } catch (e) {
-        alert("Deletion failed");
-    }
-};
+
 
 // --- QUESTIONS ---
 const fetchQuestions = async () => {
     if (!selectedSetId.value) return;
-    const res = await fetch(`/atas/api/courses/${props.courseCode}/questions?setId=${selectedSetId.value}&academicYear=${props.academicYear}&semester=${props.semester}`);
+    // PII Masking: Header used in server.js for validation if needed, though getQuestions is loose
+    // Wait, getQuestions also needs Header if we want to include hidden?
+    // Let's add header
+    const res = await fetch(`/${props.courseCode.toLowerCase()}/api/courses/${props.courseCode}/questions?setId=${selectedSetId.value}&academicYear=${props.academicYear}&semester=${props.semester}`, {
+        headers: { 'X-User-Id': props.userId }
+    });
     if (res.ok) questions.value = await res.json();
 };
 
@@ -536,16 +790,23 @@ const removeAnswer = (idx) => answerList.value.splice(idx, 1);
 
 const openQuestionModal = (q = null) => {
     if (q) {
-        editingQuestion.value = JSON.parse(JSON.stringify(q)); // Deep copy
+        editingQuestion.value = JSON.parse(JSON.stringify(q)); 
         
         // Parse Media
         mediaUrl.value = '';
-        if (q.media && q.media.url) mediaUrl.value = q.media.url; 
+        mediaType.value = 'link'; 
+        
+        let mediaObj = null;
+        if (q.media && q.media.url) mediaObj = q.media;
         else if (typeof q.media === 'string') {
-             try {
-                const m = JSON.parse(q.media);
-                if (m.url) mediaUrl.value = m.url;
-             } catch(e) { /* ignore */ }
+             try { mediaObj = JSON.parse(q.media); } catch(e){}
+        }
+
+        if (mediaObj) {
+            mediaUrl.value = mediaObj.url || '';
+            if (mediaObj.type === 'video') mediaType.value = 'video';
+            else if (mediaUrl.value.startsWith('/assets/uploads')) mediaType.value = 'upload';
+            else mediaType.value = 'link';
         }
 
         // Parse Options
@@ -576,9 +837,11 @@ const openQuestionModal = (q = null) => {
             type: 'text',
             difficulty: 1,
             context: '',
-            media: null
+            media: null,
+            sequence_order: questions.value.length + 1
         };
         mediaUrl.value = '';
+        mediaType.value = 'link';
         optionList.value = [];
         answerList.value = [];
     }
@@ -586,11 +849,12 @@ const openQuestionModal = (q = null) => {
 
 const saveQuestion = async () => {
     try {
-        // Validation / Serialize
-        
-        // Media
+        // Media Object Construction
         if (mediaUrl.value.trim()) {
-            editingQuestion.value.media = { type: 'image', url: mediaUrl.value.trim() };
+            editingQuestion.value.media = { 
+                type: mediaType.value === 'video' ? 'video' : 'image', 
+                url: mediaUrl.value.trim() 
+            };
         } else {
             editingQuestion.value.media = null;
         }
@@ -600,34 +864,49 @@ const saveQuestion = async () => {
 
         // Answer Key
         editingQuestion.value.answerKey = answerList.value.filter(a => a.trim() !== '');
+
+        // Ensure IDs
+        editingQuestion.value.difficulty = Number(editingQuestion.value.difficulty);
+        editingQuestion.value.set_id = Number(selectedSetId.value);
         
-        const res = await fetch(`/atas/api/questions`, {
+        const res = await fetch(`/${props.courseCode.toLowerCase()}/api/questions`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 
+                'Content-Type': 'application/json',
+                'X-User-Id': props.userId  // Header PII
+            },
             body: JSON.stringify({
                 userId: props.userId,
-                question: editingQuestion.value
+                question: {
+                    ...editingQuestion.value,
+                    courseCode: props.courseCode,
+                    academicYear: props.academicYear,
+                    semester: props.semester
+                }
             })
         });
-        
-        if (!res.ok) {
-            const errData = await res.json();
-            throw new Error(errData.error || "Save Failed: " + res.statusText);
-        }
 
-        editingQuestion.value = null;
-        fetchQuestions(); // Refresh
+        if (res.ok) {
+            editingQuestion.value = null;
+            fetchQuestions(); // Refresh list
+        } else {
+            alert("Save failed");
+        }
     } catch (e) {
-        alert(e.message);
+        console.error(e);
+        alert("Error saving question");
     }
 };
-
 const deleteQuestion = async (id) => {
-    if(!confirm('Delete this question?')) return;
-    await fetch(`/atas/api/questions/${id}?userId=${props.userId}&courseCode=${props.courseCode}&academicYear=${props.academicYear}&semester=${props.semester}`, {
-        method: 'DELETE'
-    });
-    fetchQuestions();
+    if (!confirm("Delete this question?")) return;
+    try {
+        const query = new URLSearchParams({ userId: props.userId, academicYear: props.academicYear, semester: props.semester });
+        await fetch(`/${props.courseCode.toLowerCase()}/api/questions/${props.courseCode}/${id}?${query}`, { method: 'DELETE' });
+        
+        questions.value = questions.value.filter(q => q.id !== id);
+    } catch (e) {
+        alert("Failed to delete question");
+    }
 };
 
 
