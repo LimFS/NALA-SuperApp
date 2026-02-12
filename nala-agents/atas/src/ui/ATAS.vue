@@ -1129,16 +1129,7 @@ const submitAnswer = async () => {
       } else {
           feedbackText = currentQuestion.value.hint || "Incorrect. Try reviewing the concepts.";
           
-          // Special Mock Logic for Q4 (MCQ specific hints)
-          if (currentQuestion.value.type === 'mcq' && userAnswer.value) {
-             if (userAnswer.value.includes('B')) {
-                feedbackText = "🤖 AI Tutor: I see you selected Point B. Recall that at Point B, velocity is zero (it crosses the axis), but look at the slope... is the graph flat there? Acceleration is the slope, not the value.";
-             } else if (userAnswer.value.includes('A') && !userAnswer.value.includes('C')) {
-                feedbackText = "🤖 AI Tutor: Point A is definitely a correct turning point! But look closely—is there another point on the graph that behaves just like A?";
-             } else {
-                feedbackText = "🤖 AI Tutor: Recall that Acceleration a(t) is the derivative v'(t). You are looking for points where the tangent line is horizontal.";
-          }
-      }
+          // Logic removed (hardcoded hint fix)
   }
   }
 

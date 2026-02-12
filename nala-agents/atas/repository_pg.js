@@ -671,5 +671,6 @@ export default {
     debugWipe, // Added for hard reset
     getQuestionStats,
     get, // Added Shim
-    getLatestCourseConfig // New
+    getLatestCourseConfig, // New
+    runQuery // Added for direct SQL access
 };

@@ -647,6 +647,110 @@ app.post('/api/questions', async (req, res) => {
     }
 });
 
+app.post('/api/courses/:courseCode/generate-questions', async (req, res) => {
+    const { courseCode } = req.params;
+    const userId = req.headers['x-user-id'] || req.body.userId;
+    const {
+        setId, taxonomy, mcqCount, textCount, mediaPreference, instructions, confirmsOverwrite,
+        academicYear, semester
+    } = req.body;
+
+    if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+    // Auth Check
+    const roleRow = await repository.getUserRole(userId, courseCode, academicYear, semester);
+    if (!roleRow || roleRow.role !== 'faculty') return res.status(403).json({ error: "Unauthorized" });
+
+    try {
+        // 1. Overwrite Check / Warning Logic
+        // Front-end should have warned. We enforce "confirmsOverwrite" if questions exist.
+        const currentQuestions = await repository.getQuestions(courseCode, academicYear, semester, setId);
+        if (currentQuestions.length > 0) {
+            if (!confirmsOverwrite) {
+                return res.status(409).json({ error: "Set not empty. Confirmation required to overwrite." });
+            }
+            // Execute Delete
+            console.log(`[AI Gen] Overwriting Set ${setId}... Deleting ${currentQuestions.length} questions.`);
+            for (const q of currentQuestions) {
+                // Clean up progress first to avoid orphaned references causing fallback errors
+                // 1. Remove specific attempts
+                await repository.runQuery('DELETE FROM student_question_attempts WHERE question_id = $1', [q.id]);
+                // 2. Reset pointer in student_progress if it matches this question
+                await repository.runQuery('UPDATE student_progress SET last_active_question_id = NULL WHERE last_active_question_id = $1', [q.id]);
+
+                await repository.deleteQuestion(q.id);
+            }
+        }
+
+        // 2. Fetch Context (Set Name, Course Info)
+        // We can pass this from UI or fetch. Let's fetch for robustness.
+        const setList = await repository.getSets(courseCode, academicYear, semester);
+        const targetSet = setList.find(s => s.set_id === Number(setId));
+        const context = {
+            courseCode,
+            academicYear,
+            semester,
+            setName: targetSet ? targetSet.name : `Set ${setId}`,
+            taxonomyName: taxonomy // Passed from UI
+        };
+
+        // 3. Defaults
+        const numMcq = mcqCount || (textCount ? 0 : 2); // Default 2 if text also empty
+        const numText = textCount || (mcqCount ? 0 : 5); // Default 5 if mcq also empty
+        // If both empty, logic above gives 2 MCQ, 5 Text.
+
+        // 4. Generate
+        console.log(`[AI Gen] Generating ${numMcq} MCQ, ${numText} Text for ${courseCode} Set ${setId}...`);
+        const gemini = new GeminiService(process.env.GEMINI_API_KEY || 'no-key');
+        const generated = await gemini.generateQuestions(
+            context,
+            taxonomy,
+            numMcq,
+            numText,
+            mediaPreference || 'default',
+            instructions || ''
+        );
+
+        // 5. Persist
+        let successCount = 0;
+        for (const qData of generated) {
+            // Validate & Sanitize
+            const q = {
+                id: crypto.randomUUID(), // New Identity
+                setId: Number(setId),
+                courseCode,
+                academicYear,
+                semester,
+                questionSetName: context.setName,
+
+                // Content
+                questionText: qData.question_text || "Generated Question",
+                type: qData.type || 'text',
+                options: qData.options || [],
+                answerKey: qData.answer_key || [],
+                explanation: qData.explanation || "",
+                hint: qData.hint || "",
+                context: qData.context || "",
+                difficulty: qData.difficulty || 1,
+                media: qData.media || null,
+                maxScore: 10, // Default
+
+                // Visibility
+                isVisible: true
+            };
+
+            await repository.upsertQuestion(q);
+            successCount++;
+        }
+
+        res.json({ success: true, count: successCount });
+
+    } catch (err) {
+        console.error("AI Generation Error:", err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
 app.get('/api/courses/:courseCode/questions', async (req, res) => {
     const { courseCode } = req.params;
     const setId = req.query.setId; // Optional: ?setId=2

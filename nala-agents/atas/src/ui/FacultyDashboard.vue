@@ -179,7 +179,7 @@
                    <button v-if="selectedSetId" @click="openQuestionModal()" class="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-indigo-700 shadow-sm flex items-center gap-2">
                        <span>+</span> Add Question
                    </button>
-                   <button v-if="selectedSetId" @click="console.log('AI Generate Triggered')" class="bg-purple-100 text-purple-700 px-4 py-2 rounded-lg text-sm font-bold hover:bg-purple-200 shadow-sm flex items-center gap-2 border border-purple-200">
+                   <button v-if="selectedSetId" @click="openAiModal()" class="bg-purple-100 text-purple-700 px-4 py-2 rounded-lg text-sm font-bold hover:bg-purple-200 shadow-sm flex items-center gap-2 border border-purple-200">
                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>
                        AI Generate
                    </button>
@@ -202,7 +202,7 @@
                        </div>
                        <div class="flex-1">
                            <div class="flex items-center gap-2 mb-1">
-                               <span class="px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded text-[10px] font-bold uppercase">{{ q.id }}</span>
+                               <span class="px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded text-[10px] font-bold uppercase">{{ q.context || 'General' }}</span>
                                <span class="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase" :class="getDiffColor(q.difficultyLevel || q.difficulty)">L{{ q.difficultyLevel || q.difficulty }}: {{ q.difficultyLevelName || q.difficultyName || 'Level ' + (q.difficultyLevel || q.difficulty) }}</span>
                                <span class="text-xs text-gray-400 font-mono">{{ q.type }}</span>
                            </div>
@@ -263,6 +263,72 @@
             </div>
 
        </div>
+    </div>
+
+    <!-- AI Generate Modal -->
+    <div v-if="showAiModal" class="fixed inset-0 z-[60] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-xl w-full max-w-lg flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
+            <!-- Header -->
+            <div class="bg-indigo-900 text-white p-4 flex justify-between items-center">
+                 <h3 class="font-bold flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>
+                    AI Generator
+                 </h3>
+                 <button @click="closeAiModal" class="text-indigo-200 hover:text-white">✕</button>
+            </div>
+            
+            <!-- Body -->
+            <div class="p-6 space-y-4">
+                <!-- Context Info (Read-Only) -->
+                <div class="bg-gray-50 p-3 rounded-lg border border-gray-100 text-sm space-y-1">
+                    <div class="flex justify-between">
+                        <span class="text-gray-500 font-bold uppercase text-[10px]">Target Set</span>
+                        <span class="font-bold text-gray-800">{{ getSetName(selectedSetId) }}</span>
+                    </div>
+                    <div class="flex justify-between">
+                         <span class="text-gray-500 font-bold uppercase text-[10px]">Taxonomy</span>
+                         <span class="font-mono text-indigo-600 font-bold">{{ getSetTaxonomy(selectedSetId) }}</span>
+                    </div>
+                </div>
+
+                <!-- Counts -->
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-bold text-gray-500 uppercase mb-1">MCQ Questions</label>
+                        <input v-model.number="aiConfig.mcqCount" type="number" min="0" max="20" class="w-full border border-gray-300 rounded-lg p-2 text-sm" placeholder="Default: 2">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Text Questions</label>
+                        <input v-model.number="aiConfig.textCount" type="number" min="0" max="20" class="w-full border border-gray-300 rounded-lg p-2 text-sm" placeholder="Default: 5">
+                    </div>
+                </div>
+
+                <!-- Media -->
+                <div>
+                     <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Include Media?</label>
+                     <select v-model="aiConfig.mediaPreference" class="w-full border border-gray-300 rounded-lg p-2 text-sm bg-white">
+                        <option value="default">As Needed (Default)</option>
+                        <option value="yes">Yes (Prioritize Visuals)</option>
+                        <option value="no">No (Text Only)</option>
+                     </select>
+                </div>
+
+                <!-- Instructions -->
+                <div>
+                     <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Instructions / Topic Focus</label>
+                     <textarea v-model="aiConfig.instructions" rows="3" class="w-full border border-gray-300 rounded-lg p-2 text-sm" placeholder="e.g. Focus on Carnot Cycle efficiency..."></textarea>
+                </div>
+            </div>
+
+            <!-- Footer -->
+            <div class="p-4 bg-gray-50 border-t border-gray-100 flex justify-end gap-3">
+                <button @click="closeAiModal" class="px-4 py-2 text-gray-500 font-bold text-sm hover:bg-gray-100 rounded-lg">Cancel</button>
+                <button @click="runAiGeneration" :disabled="isGenerating" class="bg-purple-600 hover:bg-purple-700 text-white px-6 py-2 rounded-lg font-bold text-sm shadow-md transition-all flex items-center gap-2">
+                    <span v-if="isGenerating" class="animate-spin">⏳</span>
+                    <span>{{ isGenerating ? 'Generating...' : 'Generate Questions' }}</span>
+                </button>
+            </div>
+        </div>
     </div>
 
     <!-- Question Modal -->
@@ -446,9 +512,88 @@ const mediaUrl = ref('');
 const isUploading = ref(false);
 const fileInput = ref(null);
 
+// AI Gen States
+const showAiModal = ref(false);
+const isGenerating = ref(false);
+const aiConfig = ref({
+    mcqCount: null,
+    textCount: null,
+    mediaPreference: 'default',
+    instructions: ''
+});
+
+const getSetName = (sid) => {
+    const s = sets.value.find(x => x.set_id === sid);
+    return s ? s.name : `Set ${sid}`;
+};
+
+const getSetTaxonomy = (sid) => {
+    const s = sets.value.find(x => x.set_id === sid);
+    return s ? (s.difficulty_name || 'Bloom') : 'Unknown';
+};
+
+const openAiModal = () => {
+    // Reset config
+    aiConfig.value = { mcqCount: null, textCount: null, mediaPreference: 'default', instructions: '' };
+    showAiModal.value = true;
+};
+
+const closeAiModal = () => showAiModal.value = false;
+
+const runAiGeneration = async () => {
+    // 1. Check for Existing Questions
+    if (questions.value.length > 0) {
+        if (!confirm(`Warning: This set already has ${questions.value.length} questions.\n\nRunning AI Generation will OVERWRITE them. This cannot be undone.\n\nAre you sure you want to proceed?`)) {
+            return;
+        }
+    }
+
+    isGenerating.value = true;
+    try {
+        const res = await fetch(`/${props.courseCode.toLowerCase()}/api/courses/${props.courseCode}/generate-questions`, {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json',
+                'X-User-Id': props.userId 
+            },
+            body: JSON.stringify({
+                setId: selectedSetId.value,
+                taxonomy: getSetTaxonomy(selectedSetId.value),
+                mcqCount: aiConfig.value.mcqCount,
+                textCount: aiConfig.value.textCount,
+                mediaPreference: aiConfig.value.mediaPreference,
+                instructions: aiConfig.value.instructions,
+                confirmsOverwrite: true, // We confirmed above
+                academicYear: props.academicYear,
+                semester: props.semester
+            })
+        });
+
+        if (res.ok) {
+            const data = await res.json();
+            alert(`Success! Generated ${data.count} questions.`);
+            closeAiModal();
+            fetchQuestions(); // Refresh list
+        } else {
+            const err = await res.json();
+            alert(`Generation Failed: ${err.error}`);
+        }
+    } catch (e) {
+        alert("Network Error during Generation");
+        console.error(e);
+    } finally {
+        isGenerating.value = false;
+    }
+};
+
 const sortedQuestions = computed(() => {
-    // Sort by sequence_order first
+    // Sort by difficulty (ascending)
     return [...questions.value].sort((a, b) => {
+        const diffA = Number(a.difficultyLevel || a.difficulty) || 0;
+        const diffB = Number(b.difficultyLevel || b.difficulty) || 0;
+        if (diffA !== diffB) return diffA - diffB;
+        
+        // Fallback to sequence
         const seqA = a.sequence_order || 0;
         const seqB = b.sequence_order || 0;
         return seqA - seqB; 
